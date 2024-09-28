@@ -76,7 +76,7 @@ public:
     }
 
     void LogMessage(std::string_view message) const {
-        std::osyncstream os{std::cout};
+        std::osyncstream os{std::cout}; // для асинхр. операций
         os << id_ << "> ["sv << duration<double>(steady_clock::now() - start_time_).count()
            << "s] "sv << message << std::endl;
     }
@@ -102,46 +102,60 @@ public:
     void Execute() {
         logger_.LogMessage("Order has been started."sv);
 
+        // Заказ - сделать бургер.
+        // Чтобы сделать бургер, нужно приготовить для бургера ингридиенты.\
+        // Приготовить ингридиенты:
+        //1. ОБЯЗАТЕЛЬНО: пожарить котлету
+        //2. ОПЦИОНАЛЬНО: замариновать лук
+
         // Жарим котлету
-        RoastCutlet();
+        RoastCutlet(); // синхр.
 
         // Маринуем лук
         if (with_onion_) {
-            MarinadeOnion();
+            MarinadeOnion(); // синхр.
         }
     }
 
 private:
     void RoastCutlet() {
+        // Пожарить котлету - означает еще и выполнить в результате жарки котлеты что-то
         logger_.LogMessage("Start roasting cutlet"sv);
 
         // Выполняем асинхронно лямбду (когда будет ожидание, то выполнится через 1с)
         roast_timer_.async_wait([self = shared_from_this()](sys::error_code ec) {
             self->OnRoasted(ec);
-        });
+        }); // асинхр.
     }
     void OnRoasted(sys::error_code ec) {
+        // Когда котлета пожарена - запоминаем это! (SetCutletRoasted)
+        // Но после любого готового ингридиента, нам требуется проверка: 
+        // достаточно ли текущего ингридиента для готовности заказа  (CheckReadiness)
         if (ec) {
             logger_.LogMessage("Roast error : "s + ec.what());
         } else {
             logger_.LogMessage("Cutlet has been roasted."sv);
-            hamburger_.SetCutletRoasted();
+            hamburger_.SetCutletRoasted(); // Жареная котлета идет сразу в бургер
         }
         CheckReadiness(ec);
     }
     
     void MarinadeOnion() {
+        // Замариновать лук - означает еще и выполнить в результате маринования лука что-то
         logger_.LogMessage("Start marinading onion"sv);
         marinade_timer_.async_wait([self = shared_from_this()](sys::error_code ec) {
             self->OnOnionMarinaded(ec);
-        });
+        }); // асинхр.
     }
     void OnOnionMarinaded(sys::error_code ec) {
+        // Когда лук замаренован - запоминаем это! (onion_marinaded_)
+        // Но после любого готового ингридиента, нам требуется проверка: 
+        // достаточно ли текущего ингридиента для готовности заказа  (CheckReadiness)
         if (ec) {
             logger_.LogMessage("Marinade onion error: "s + ec.what());
         } else {
             logger_.LogMessage("Onion has been marinaded."sv);
-            onion_marinaded_ = true;
+            onion_marinaded_ = true; // Маринованый лук не идет сразу в бургер! (лук не нужен или еще не очередь лука добавляться к бургеру)
         }
         CheckReadiness(ec);
     }
@@ -153,18 +167,23 @@ private:
         }
         if (ec) {
             // В случае ошибки уведомляем клиента о невозможности выполнить заказ
-            return Deliver(ec);
+            return Deliver(ec); // синхр.
         }
 
+        // Далее рассматривается случаи, которые возможны после завершения приготовления какого-либо из ингридиентов.
+        // ! Добавление лука и маринование лука разные вещи
+        // ! Кроме добавления других ингридиентов (AddOnion) возможно еще и упаковка гамбургера (Pack)
+
+        // Отдельно рассматриваем добавления лука в гамбургер!
         // Самое время добавить лук
         if (CanAddOnion()) {
             logger_.LogMessage("Add onion"sv);
-            hamburger_.AddOnion();
+            hamburger_.AddOnion(); // синхр.
         }
 
         // Если все компоненты гамбургера готовы, упаковываем его
         if (IsReadyToPack()) {
-            Pack();
+            Pack(); // синхр.
         }
     }
 
@@ -198,6 +217,7 @@ private:
         hamburger_.Pack();
         logger_.LogMessage("Packed"sv);
 
+        // Как только гамбургер упакован: выполняем доставку
         Deliver({});
     }
 
@@ -227,10 +247,12 @@ public:
     int MakeHamburger(bool with_onion, OrderHandler handler) {
         const int order_id = ++next_order_id_;
 
+        // Объект класса Order тоже асинхронно что-то делает (из-за io_)
         // Не удаляется объект класса Order, т.к. внутри используется shared_ptr на тот же самый объект Order
         // (продление жизни, за счет подачи в лямбду)
         std::make_shared<Order>(io_, order_id, with_onion, handler)->Execute();
 
+        // Возвращаем номер заказа (круто - номер заказа получим раньше, чем бургер сделается)
         return order_id;
     }
 
@@ -240,10 +262,11 @@ private:
 };
 
 int main() {
+    // Движок, в котором выполняются асинхронные операции (io.run() - останавливает текущий поток и запускает все асинх. операции и ждет завершения всех асинхр. операций)
     net::io_context io;
 
+    // Асинхронный ресторан (из-за io)
     Restaurant restaurant{io};
-
     Logger logger{"main"s};
 
     struct OrderResult {
@@ -251,11 +274,13 @@ int main() {
         Hamburger hamburger;
     };
 
+    // Хотим получать наши бургеры в orders
     std::unordered_map<int, OrderResult> orders;
     auto handle_result = [&orders](sys::error_code ec, int id, Hamburger* h) {
         orders.emplace(id, OrderResult{ec, ec ? Hamburger{} : *h});
     };
 
+    // Создаем асинхронно 2 бургера
     const int id1 = restaurant.MakeHamburger(false, handle_result);
     const int id2 = restaurant.MakeHamburger(true, handle_result);
 
