@@ -62,7 +62,7 @@ public:
         // Request: /api/v1/maps/{map id}, no map with id
         auto map = game_.FindMap(model::Map::Id{match_results[1]});
         if (!map) {
-            send(RequestHandler::MakeStringResponse(http::status::bad_request,
+            send(RequestHandler::MakeStringResponse(http::status::not_found,
                                                     map_not_found_response_body,
                                                     req));
             return;
