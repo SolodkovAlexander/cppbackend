@@ -33,7 +33,7 @@ class Logger {
 
     // Для имени файла возьмите дату с форматом "%Y_%m_%d"
     std::string GetFileTimeStamp() const {
-        const auto now = std::chrono::system_clock::now();
+        const auto now = GetTime();
         const auto t_c = std::chrono::system_clock::to_time_t(now);
         char time_str[100];
         assert(std::strftime(time_str, sizeof(time_str), "%Y_%m_%d", std::localtime(&t_c)) > 0);
