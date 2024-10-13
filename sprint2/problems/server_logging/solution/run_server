@@ -1,0 +1,1 @@
+./build_Debug/bin/game_server ./data/config.json ./static
