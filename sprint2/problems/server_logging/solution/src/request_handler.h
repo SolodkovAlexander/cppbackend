@@ -69,7 +69,7 @@ public:
         std::chrono::system_clock::time_point end_ts = std::chrono::system_clock::now();
 
         // Log
-        LogMadeResponseDuration(response, (end_ts - start_ts_).count());
+        LogMadeResponseDuration(response, std::chrono::duration_cast<std::chrono::milliseconds>(end_ts - start_ts_).count());
 
         // Sending response
         SendResponse(std::move(response), std::move(send));
