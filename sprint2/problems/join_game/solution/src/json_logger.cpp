@@ -2,8 +2,6 @@
 #include <boost/log/utility/setup/common_attributes.hpp>
 #include <boost/date_time.hpp> //для вывода времени
 
-#include <iostream>
-
 #include "json_logger.h"
 
 namespace json_logger {

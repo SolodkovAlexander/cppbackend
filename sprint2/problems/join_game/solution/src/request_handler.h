@@ -3,6 +3,7 @@
 #include "model.h"
 #include "json_logger.h"
 
+#include <boost/asio/strand.hpp>
 #include <boost/beast.hpp>
 #include <boost/json.hpp>
 #include <boost/url.hpp>
@@ -12,6 +13,7 @@
 #include <variant>
 
 namespace http_handler {
+namespace net = boost::asio;
 namespace beast = boost::beast;
 namespace http = beast::http;
 namespace json = boost::json;
@@ -21,17 +23,54 @@ namespace fs = std::filesystem;
 using namespace std::literals;
 using namespace model;
 
-class RequestHandler {
+using StringResponse = http::response<http::string_body>;
+using FileResponse = http::response<http::file_body>;
+using RequestResponse = std::variant<StringResponse,FileResponse>;
+
+class MakingResponseDurationLogger {
+public:
+    MakingResponseDurationLogger(RequestResponse& response) :
+        response_(response)
+    {}
+    ~MakingResponseDurationLogger() {
+        std::chrono::system_clock::time_point end_ts = std::chrono::system_clock::now();
+        LogMadeResponseDuration(std::chrono::duration_cast<std::chrono::milliseconds>(end_ts - start_ts_).count());
+    }
+
 private:
-    // Ответ, тело которого представлено в виде строки
-    using StringResponse = http::response<http::string_body>;
-    using FileResponse = http::response<http::file_body>;
-    using RequestResponse = std::variant<std::monostate,StringResponse,FileResponse>;
+    template <typename Duration>
+    void LogMadeResponseDuration(Duration duration) {
+        int code = 0;
+        std::string content_type = "null"s;
+        if (holds_alternative<StringResponse>(response_)) {
+            auto resp = get<StringResponse>(response_);
+            code = resp.result_int();
+            try { content_type = resp.at(http::field::content_type); } catch (...) {}
+        } else if (holds_alternative<FileResponse>(response_)) {
+            code = get<FileResponse>(response_).result_int();
+            try { content_type = get<FileResponse>(response_).at(http::field::content_type); } catch (...) {}
+        }
+        
+        json_logger::LogData("response sent"sv,
+                             boost::json::object{{"response_time", duration}, 
+                                                 {"code", code},
+                                                 {"content_type", content_type}});
+    }
+
+private:
+    std::chrono::system_clock::time_point start_ts_ = std::chrono::system_clock::now();
+    RequestResponse& response_;
+};
+
+class RequestHandler : public std::enable_shared_from_this<RequestHandler> {
+private:
+    using Strand = net::strand<net::io_context::executor_type>;
 
 public:
-    explicit RequestHandler(model::Game& game, const std::string &static_data_path)
+    explicit RequestHandler(model::Game& game, const std::string &static_data_path, Strand api_strand)
         : game_{game},
-          static_data_path_{fs::weakly_canonical(static_data_path)}
+          static_data_path_{fs::weakly_canonical(static_data_path)},
+          api_strand_{api_strand}
     {}
 
     RequestHandler(const RequestHandler&) = delete;
@@ -39,47 +78,44 @@ public:
 
     template <typename Body, typename Allocator, typename Send>
     void operator()(http::request<Body, http::basic_fields<Allocator>>&& req, Send&& send) {
-        // Calculate time: START
-        std::chrono::system_clock::time_point start_ts_ = std::chrono::system_clock::now();
-
-        std::optional<RequestResponse> response;
-
         // Check: HTTP method
         if (req.method() != http::verb::get 
             && req.method() != http::verb::head) {
-            response = MakeStringResponse(http::status::bad_request, GetBadRequestResponseBodyStr(), req);
+            RequestResponse response;
+            {
+                MakingResponseDurationLogger durationLogger(response);
+                response = MakeStringResponse(http::status::bad_request, GetBadRequestResponseBodyStr(), req);
+            }
+            return SendResponse(std::move(response), std::move(send));
         }
-
-        // Decode URL
-        urls::decode_view url_decoded(req.target());
 
         // API request
-        if (!response) {
-            response = HandleApiRequest(std::move(req), url_decoded);
+        urls::decode_view url_decoded(req.target());
+        if (IsApiRequest(url_decoded)) {
+            auto handle = [self = shared_from_this(), send, req = std::forward<decltype(req)>(req)] {
+                RequestResponse response;
+                {
+                    MakingResponseDurationLogger durationLogger(response);
+                    response = self->HandleApiRequest(std::forward<decltype(req)>(req));
+                }
+                return self->SendResponse(std::move(response), std::move(send));
+            };
+            return net::dispatch(api_strand_, handle);
         }
+
         // Static data request
-        if (!response) {
-            response = HandleStaticDataRequest(std::move(req), url_decoded);
+        RequestResponse response;
+        {
+            MakingResponseDurationLogger durationLogger(response);
+            response = HandleStaticDataRequest(std::move(req));
         }
-        
-        // Calculate time: FINISH
-        std::chrono::system_clock::time_point end_ts = std::chrono::system_clock::now();
-
-        // Log
-        LogMadeResponseDuration(*response, std::chrono::duration_cast<std::chrono::milliseconds>(end_ts - start_ts_).count());
-
-        // Sending response
-        SendResponse(std::move(*response), std::move(send));
+        return SendResponse(std::move(response), std::move(send));
     }
 
 private:
     template <typename Body, typename Allocator>
-    std::optional<RequestResponse> HandleApiRequest(http::request<Body, http::basic_fields<Allocator>>&& req, 
-                                                    urls::decode_view url_decoded) {
-        const static std::string api_url_begin = "/api/"s;
-        if (!url_decoded.starts_with(api_url_begin)) {
-            return {};
-        }
+    RequestResponse HandleApiRequest(http::request<Body, http::basic_fields<Allocator>> req) {
+        urls::decode_view url_decoded(req.target());
 
         // Check: /api/v1/maps
         if (url_decoded == "/api/v1/maps"s) {
@@ -104,8 +140,9 @@ private:
     }
 
     template <typename Body, typename Allocator>
-    std::optional<RequestResponse> HandleStaticDataRequest(http::request<Body, http::basic_fields<Allocator>>&& req, 
-                                                           urls::decode_view url_decoded) {
+    RequestResponse HandleStaticDataRequest(http::request<Body, http::basic_fields<Allocator>>&& req) {
+        urls::decode_view url_decoded(req.target());
+
         // Check for valid path
         fs::path req_path{"." + std::string(url_decoded.begin(), url_decoded.end())};
         fs::path abs_path = fs::weakly_canonical(static_data_path_ / req_path);
@@ -214,28 +251,6 @@ private:
         }
     }
 
-    template <typename Duration>
-    void LogMadeResponseDuration(const RequestResponse& response, Duration duration) {
-        if (holds_alternative<std::monostate>(response)) {
-            return;
-        }
-
-        int code = 0;
-        std::string content_type = "null"s;
-        if (holds_alternative<StringResponse>(response)) {
-            auto resp = get<StringResponse>(response);
-            code = resp.result_int();
-            try { content_type = resp.at(http::field::content_type); } catch (...) {}
-        } else if (holds_alternative<FileResponse>(response)) {
-            code = get<FileResponse>(response).result_int();
-            try { content_type = get<FileResponse>(response).at(http::field::content_type); } catch (...) {}
-        }
-        json_logger::LogData("response sent"sv,
-                             boost::json::object{{"response_time", duration}, 
-                                                 {"code", code},
-                                                 {"content_type", content_type}});
-    }
-
 private:
     static json::array MapsToShortJson(const Game::Maps& maps);
     static json::object MapToJson(const Map* map);
@@ -245,10 +260,12 @@ private:
 
 private:
     static bool IsSubPath(fs::path path, fs::path base);
+    static bool IsApiRequest(urls::decode_view url_decoded);
 
 private:
     model::Game& game_;
     fs::path static_data_path_;
+    Strand api_strand_;
 };
 
 }  // namespace http_handler
