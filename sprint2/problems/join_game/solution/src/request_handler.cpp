@@ -115,8 +115,4 @@ bool RequestHandler::IsSubPath(fs::path wc_path, fs::path wc_base) {
     return true;
 }
 
-bool RequestHandler::IsApiRequest(urls::decode_view url_decoded) {
-    return url_decoded.starts_with("/api/"sv);
-}
-
 }  // namespace http_handler

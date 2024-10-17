@@ -8,6 +8,8 @@
 
 #include "json_loader.h"
 #include "json_logger.h"
+#include "model.h"
+#include "players.h"
 #include "request_handler.h"
 
 using namespace std::literals;
@@ -40,8 +42,14 @@ int main(int argc, const char* argv[]) {
     json_logger::InitLogger();
 
     try {
+        std::filesystem::path game_config_file_path = argv[1];
+        std::string static_data_dir_path = argv[2];
+
         // 1. Загружаем карту из файла и построить модель игры
-        model::Game game = json_loader::LoadGame(argv[1]);
+        model::Game game = json_loader::LoadGame(game_config_file_path);
+
+        // 1.1. Контроллер игроками
+        players::Players players;
 
         // 2. Инициализируем io_context
         const unsigned num_threads = std::thread::hardware_concurrency();
@@ -58,7 +66,7 @@ int main(int argc, const char* argv[]) {
 
         // 4. Создаём обработчик HTTP-запросов и связываем его с моделью игры
         auto api_strand = net::make_strand(ioc);
-        auto handler = std::make_shared<http_handler::RequestHandler>(game, argv[2], api_strand);
+        auto handler = std::make_shared<http_handler::RequestHandler>(game, players, static_data_dir_path, api_strand);
 
         // 5. Запустить обработчик HTTP-запросов, делегируя их обработчику запросов
         const auto address = net::ip::make_address("0.0.0.0");

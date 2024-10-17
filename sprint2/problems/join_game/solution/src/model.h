@@ -1,4 +1,6 @@
 #pragma once
+
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -167,6 +169,67 @@ private:
     Offices offices_;
 };
 
+class Dog {
+public:
+    using DogId = std::uint64_t;
+
+    Dog(const std::string& name, DogId id) : 
+        name_(name),
+        id_(id)
+    {}
+
+public:
+    DogId GetId() const {
+        return id_;
+    }
+    std::string GetName() const {
+        return name_;
+    }
+
+private:
+    std::string name_;
+    DogId id_;
+};
+
+class GameSession {
+private:
+    using Dogs = std::vector<std::unique_ptr<Dog>>;
+    using DogIdToDog = std::unordered_map<std::uint64_t, Dog*>;
+
+public:
+    explicit GameSession(const Map* map) : 
+        map_(map) 
+    {}
+
+    GameSession(const GameSession&) = delete;
+    GameSession& operator=(const GameSession&) = delete;
+
+public:
+    Dog* CreateDog(const std::string& name) {
+        auto dog = dogs_.emplace_back(std::make_unique<Dog>(name, dogs_.size())).get();
+        dog_id_to_dog_[dog->GetId()] = dog;
+        return dog;
+    }
+
+    std::vector<Dog*> GetDogs() {
+        std::vector<Dog*> dogs;
+        dogs.reserve(dogs_.size());
+        for (const auto& dog : dogs_) {
+            dogs.emplace_back(dog.get());
+        }
+        return dogs;
+    }
+
+    const Map* GetMap() const {
+        return map_;
+    }
+
+private:
+    Dogs dogs_;
+    DogIdToDog dog_id_to_dog_;
+    const Map* map_;
+};
+
 class Game {
 public:
     using Maps = std::vector<Map>;
@@ -184,12 +247,26 @@ public:
         return nullptr;
     }
 
+public:
+    GameSession* CreateSession(const Map* map) {
+        return sessions_.emplace_back(std::make_unique<GameSession>(map)).get();
+    }
+    GameSession* FindSession(const Map* map) const {
+        auto it = std::find_if(sessions_.begin(), sessions_.end(), [map](const auto& session){ return session->GetMap() == map; });
+        return (it != sessions_.end() ? it->get() : nullptr);
+    }
+
 private:
     using MapIdHasher = util::TaggedHasher<Map::Id>;
     using MapIdToIndex = std::unordered_map<Map::Id, size_t, MapIdHasher>;
 
     std::vector<Map> maps_;
     MapIdToIndex map_id_to_index_;
+
+private:
+    using Sessions = std::vector<std::unique_ptr<GameSession>>;
+
+    Sessions sessions_;
 };
 
 }  // namespace model
