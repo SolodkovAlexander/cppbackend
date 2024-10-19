@@ -73,6 +73,7 @@ enum class RequestType {
 enum class ResponseErrorType {
     BadRequest,
     InvalidMethod,
+    InvalidContentType,
     InvalidAuthorization,
     NoPlayerWithToken,
     InvalidJSON,
@@ -89,7 +90,8 @@ enum class ApiRequestType {
     Maps,
     GameJoin, 
     Players,
-    GameState 
+    GameState,
+    Action 
 };
 
 class RequestHandler : public std::enable_shared_from_this<RequestHandler> {
@@ -156,6 +158,9 @@ private:
         }
         if (url_decoded == "/api/v1/game/state"sv) {
             return HandleGameStateRequest(req);
+        }
+        if (url_decoded == "/api/v1/game/action"sv) {
+            return HandleActionRequest(req);
         }
 
         if (req.method() != http::verb::get && req.method() != http::verb::head) {
@@ -264,7 +269,7 @@ private:
                 players_by_id[std::to_string(dog->GetId())] = json::object{
                     {"pos"sv, json::array{dog->GetPosition().x, dog->GetPosition().y}},
                     {"speed"sv, json::array{dog->GetSpeed().x, dog->GetSpeed().y}},
-                    {"dir"sv, std::string{dog->GetDirectionAsChar()}}
+                    {"dir"sv, std::string{model::Dog::GetDirectionAsChar(dog->GetDirection())}}
                 };
             }
 
@@ -274,6 +279,44 @@ private:
                                       ContentType::APPLICATION_JSON,
                                       "no-cache"sv);
         }, ApiRequestType::GameState);
+    }
+
+    template <typename Body, typename Allocator>
+    RequestResponse HandleActionRequest(http::request<Body, http::basic_fields<Allocator>>& req) {
+        if (req.method() != http::verb::post) {
+            return MakeErrorResponse(ResponseErrorType::InvalidMethod, req, ApiRequestType::Action);
+        }
+        if (req[http::field::content_type] != ContentType::APPLICATION_JSON) {
+            return MakeErrorResponse(ResponseErrorType::InvalidContentType, req, ApiRequestType::Action);
+        }
+        
+        return ExecuteAuthorized(req, [&req, this](const players::Players::Token& token){
+            std::optional<model::Dog::Direction> direction;
+            try {
+                auto req_data = json::parse(req.body()).as_object();
+                auto direction_str = req_data.at("move"sv).as_string();
+                if (direction_str.size() > 1) {
+                    throw std::invalid_argument("Whrong direction as string"s);
+                }
+                if (!direction_str.empty()) {
+                    direction = model::Dog::GetDirectionFromChar(direction_str.at(0));
+                }
+            } catch (...) { 
+                return MakeErrorResponse(ResponseErrorType::InvalidJSON, req, ApiRequestType::Action);
+            }
+
+            auto player = players_.FindByToken(token);
+            if (!player) {
+                return MakeErrorResponse(ResponseErrorType::NoPlayerWithToken, req, ApiRequestType::Action);
+            }
+            player->Move(direction);
+
+            return MakeStringResponse(http::status::ok, 
+                                      json::serialize(json::object{}), 
+                                      req,
+                                      ContentType::APPLICATION_JSON,
+                                      "no-cache"sv);
+        }, ApiRequestType::Action);
     }
 
     template <typename Body, typename Allocator>
@@ -347,9 +390,7 @@ private:
     }
 
     template <typename Fn, typename Body, typename Allocator>
-    static StringResponse ExecuteAuthorized(http::request<Body, http::basic_fields<Allocator>>& req, 
-                                            Fn&& action,
-                                            ApiRequestType request_type) {
+    static StringResponse ExecuteAuthorized(http::request<Body, http::basic_fields<Allocator>>& req, Fn&& action, ApiRequestType request_type) {
         if (auto token = TryExtractToken(std::string(req[http::field::authorization]))) {
             return action(*token);
         } else {
@@ -512,6 +553,67 @@ private:
                 }
             }
             break;
+        }
+        case ApiRequestType::Action: {
+            switch (response_error_type)
+            {
+                case ResponseErrorType::InvalidMethod: {
+                    result = MakeStringResponse<Body, Allocator>(http::status::method_not_allowed, 
+                                                                json::serialize(json::object{
+                                                                    {"code"sv, "invalidMethod"sv}, 
+                                                                    {"message"sv, "Invalid method"sv}
+                                                                }), 
+                                                                req, 
+                                                                ContentType::APPLICATION_JSON,
+                                                                "no-cache"sv);
+                    result.set(http::field::allow, "POST"sv);
+                    break;
+                }
+                case ResponseErrorType::InvalidContentType: {
+                    result = MakeStringResponse<Body, Allocator>(http::status::bad_request, 
+                                                                json::serialize(json::object({
+                                                                    {"code", "invalidArgument"s},
+                                                                    {"message", "Invalid content type"s}
+                                                                })), 
+                                                                req, 
+                                                                ContentType::APPLICATION_JSON,
+                                                                "no-cache"sv);
+                    break;
+                }
+                case ResponseErrorType::InvalidJSON: {
+                    result = MakeStringResponse<Body, Allocator>(http::status::bad_request, 
+                                                                json::serialize(json::object{
+                                                                    {"code"sv, "invalidArgument"sv}, 
+                                                                    {"message"sv, "Failed to parse action"sv}
+                                                                }), 
+                                                                req, 
+                                                                ContentType::APPLICATION_JSON,
+                                                                "no-cache"sv);
+                    break;
+                }
+                case ResponseErrorType::NoPlayerWithToken: {
+                    result = MakeStringResponse<Body, Allocator>(http::status::unauthorized, 
+                                                                json::serialize(json::object{
+                                                                    {"code"sv, "unknownToken"sv}, 
+                                                                    {"message"sv, "Player token has not been found"sv}
+                                                                }), 
+                                                                req, 
+                                                                ContentType::APPLICATION_JSON,
+                                                                "no-cache"sv);
+                    break;
+                }
+                case ResponseErrorType::InvalidAuthorization: {
+                    result = MakeStringResponse<Body, Allocator>(http::status::unauthorized, 
+                                                                json::serialize(json::object{
+                                                                    {"code"sv, "invalidToken"sv}, 
+                                                                    {"message"sv, "Authorization header is required"sv}
+                                                                }), 
+                                                                req, 
+                                                                ContentType::APPLICATION_JSON,
+                                                                "no-cache"sv);
+                    break;
+                }
+            }
         }
         }
 

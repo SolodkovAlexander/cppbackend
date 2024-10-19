@@ -1,6 +1,7 @@
 #pragma once
 
 #include <memory>
+#include <random>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -129,9 +130,10 @@ public:
     using Buildings = std::vector<Building>;
     using Offices = std::vector<Office>;
 
-    Map(Id id, std::string name) noexcept
+    Map(Id id, std::string name, const model::DimensionD& default_speed) noexcept
         : id_(std::move(id))
-        , name_(std::move(name)) {
+        , name_(std::move(name))
+        , default_speed_(default_speed) {
     }
 
     const Id& GetId() const noexcept {
@@ -154,6 +156,10 @@ public:
         return offices_;
     }
 
+    const DimensionD& GetDefaultSpeed() const noexcept {
+        return default_speed_;
+    }
+
     void AddRoad(const Road& road) {
         roads_.emplace_back(road);
     }
@@ -174,6 +180,7 @@ private:
 
     OfficeIdToIndex warehouse_id_to_index_;
     Offices offices_;
+    DimensionD default_speed_;
 };
 
 class Dog {
@@ -188,13 +195,18 @@ public:
         DimensionD x, y;
     };
 
+private:
+    static constexpr PointD DEFAULT_POSITION = PointD{0.0, 0.0};
+    static constexpr Speed DEFAULT_SPEED = Speed{0.0, 0.0};
+
 public:
     using DogId = std::uint64_t;
 
-    Dog(std::string name, DogId id, PointD position = PointD{0.0, 0.0}) 
-        : name_(std::move(name)),
-          id_(id),
-          position_(position)
+    Dog(std::string name, DogId id, PointD position = DEFAULT_POSITION, Speed speed = DEFAULT_SPEED) 
+        : name_(std::move(name))
+        , id_(id)
+        , position_(position)
+        , speed_(speed)
     {}
 
 public:
@@ -207,20 +219,34 @@ public:
     Speed GetSpeed() const noexcept {
         return speed_;
     }
+    void SetSpeed(Speed speed) {
+        speed_ = speed;
+    }
     Direction GetDirection() const noexcept {
         return direction_;
     }
-    char GetDirectionAsChar() const noexcept {
-        static const std::unordered_map<Direction,char> direction_to_str{
+    const std::string& GetName() const noexcept {
+        return name_;
+    }
+
+public:
+    static char GetDirectionAsChar(Direction direction) noexcept {
+        static const std::unordered_map<Direction,char> direction_to_ch{
             {Direction::NORTH, 'U'},
             {Direction::SOUTH, 'D'},
             {Direction::WEST, 'L'},
             {Direction::EAST, 'R'}
         };
-        return direction_to_str.at(direction_);
+        return direction_to_ch.at(direction);
     }
-    const std::string& GetName() const noexcept {
-        return name_;
+    static Direction GetDirectionFromChar(char direction) noexcept {
+        static const std::unordered_map<char,Direction> ch_to_direction{
+            {'U', Direction::NORTH},
+            {'D', Direction::SOUTH},
+            {'L', Direction::WEST},
+            {'R', Direction::EAST}
+        };
+        return ch_to_direction.at(direction);
     }
 
 private:
@@ -246,9 +272,34 @@ public:
 
 public:
     Dog* CreateDog(const std::string& name) {
-        auto dog = dogs_.emplace_back(std::make_unique<Dog>(name, dogs_.size())).get();
+        auto dog = dogs_.emplace_back(std::make_unique<Dog>(name, 
+                                                            dogs_.size(), 
+                                                            GenerateNewDogPosition())).get();
         dog_id_to_dog_[dog->GetId()] = dog;
         return dog;
+    }
+    PointD GenerateNewDogPosition() const noexcept {
+        std::random_device rand_device; 
+        std::mt19937_64 rand_engine(rand_device());
+
+        // Определяем дорогу
+        std::uniform_int_distribution<std::mt19937_64::result_type> unif(0, map_->GetRoads().size() - 1);
+        const auto& road = map_->GetRoads().at(unif(rand_engine));
+        auto r_start = road.GetStart();
+        auto r_end = road.GetEnd();
+        
+        // Определяем позицию на дороге
+        PointD pos{0.0, 0.0}; 
+        if (std::abs(r_start.x - r_end.x) > std::abs(r_start.y - r_end.y)) {
+            std::uniform_real_distribution<double> unif_d(std::min(r_start.x, r_end.x), std::max(r_start.x, r_end.x));
+            pos.x = unif_d(rand_engine);
+            pos.y = (((pos.x - DimensionD(r_start.x)) * DimensionD(r_end.y - r_start.y)) / DimensionD(r_end.x - r_start.x)) + DimensionD(r_start.y);
+        } else {
+            std::uniform_real_distribution<double> unif_d(std::min(r_start.y, r_end.y), std::max(r_start.y, r_end.y));
+            pos.y = unif_d(rand_engine);
+            pos.x = (((pos.y - DimensionD(r_start.y)) * DimensionD(r_end.x - r_start.x)) / DimensionD(r_end.y - r_start.y)) + DimensionD(r_start.x);
+        }
+        return pos;
     }
 
     std::vector<Dog*> GetDogs() {
@@ -272,6 +323,13 @@ private:
 
 class Game {
 public:
+    static constexpr DimensionD DEFAULT_SPEED = 1.0;
+
+    Game(DimensionD map_default_speed = DEFAULT_SPEED)
+         : map_default_speed_{map_default_speed}
+    {}
+
+public:
     using Maps = std::vector<Map>;
 
     void AddMap(Map map);
@@ -288,6 +346,10 @@ public:
     }
 
 public:
+    DimensionD GetMapDefaultSpeed() const noexcept {
+        return map_default_speed_;
+    }
+
     GameSession* CreateSession(const Map* map) {
         return sessions_.emplace_back(std::make_unique<GameSession>(map)).get();
     }
@@ -295,6 +357,9 @@ public:
         auto it = std::find_if(sessions_.begin(), sessions_.end(), [map](const auto& session){ return session->GetMap() == map; });
         return (it != sessions_.end() ? it->get() : nullptr);
     }
+
+private:
+    DimensionD map_default_speed_;
 
 private:
     using MapIdHasher = util::TaggedHasher<Map::Id>;

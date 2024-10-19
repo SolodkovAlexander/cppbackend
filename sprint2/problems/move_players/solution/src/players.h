@@ -3,6 +3,7 @@
 #include "model.h"
 
 #include <iomanip>
+#include <optional>
 #include <random>
 #include <sstream>
 #include <unordered_map>
@@ -23,6 +24,21 @@ public:
     }
     model::GameSession* GetSession() const {
         return session_;
+    }
+    void Move(std::optional<model::Dog::Direction> direction) {
+        auto dog_speed = dog_->GetSpeed();
+        if (!direction) {
+            dog_speed = model::Dog::Speed{0.0, 0.0};
+        } else {
+            switch (*direction)
+            {
+            case model::Dog::Direction::NORTH: dog_speed = model::Dog::Speed{0.0, -dog_speed.y}; break;
+            case model::Dog::Direction::SOUTH: dog_speed = model::Dog::Speed{0.0, dog_speed.y}; break;
+            case model::Dog::Direction::WEST: dog_speed = model::Dog::Speed{-dog_speed.x, 0.0}; break;
+            case model::Dog::Direction::EAST: dog_speed = model::Dog::Speed{dog_speed.x, 0.0}; break;
+            }
+        }        
+        dog_->SetSpeed(dog_speed);
     }
 
 private:
