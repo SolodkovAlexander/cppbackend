@@ -635,7 +635,9 @@ private:
                                                                 {"code", "badRequest"s},
                                                                 {"message", "Bad request"s}
                                                              })), 
-                                                             req);//!!!
+                                                             req,
+                                                             ContentType::APPLICATION_JSON,
+                                                             true);
                 break;
             }
             case ResponseErrorType::MapNotFound: {
@@ -644,21 +646,25 @@ private:
                                                                 {"code", "mapNotFound"s},
                                                                 {"message", "Map not found"s}
                                                              })), 
-                                                             req);//!!!
+                                                             req,
+                                                             ContentType::APPLICATION_JSON,
+                                                             true);
                 break;
             }
             case ResponseErrorType::StaticDataFileNotFound: {
                 result = MakeStringResponse(http::status::not_found, 
                                             "File not found"sv, 
                                             req, 
-                                            ContentType::TEXT_PLAIN);//!!!
+                                            ContentType::TEXT_PLAIN,
+                                            true);
                 break;
             }
             case ResponseErrorType::StaticDataFileNotSubPath: {
                 result = MakeStringResponse(http::status::bad_request, 
                                             "No rights to path"sv, 
                                             req, 
-                                            ContentType::TEXT_PLAIN);//!!!
+                                            ContentType::TEXT_PLAIN,
+                                            true);
                 break;
             }
         }

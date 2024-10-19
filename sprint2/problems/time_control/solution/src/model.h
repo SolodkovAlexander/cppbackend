@@ -49,6 +49,7 @@ class Road {
 public:
     constexpr static HorizontalTag HORIZONTAL{};
     constexpr static VerticalTag VERTICAL{};
+    constexpr static DimensionD HALF_WIDTH = 0.4;
 
     Road(HorizontalTag, Point start, Coord end_x) noexcept
         : start_{start}
