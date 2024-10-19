@@ -160,7 +160,7 @@ private:
         if (url_decoded == "/api/v1/game/state"sv) {
             return HandleGameStateRequest(req);
         }
-        if (url_decoded == "/api/v1/game/action"sv) {
+        if (url_decoded == "/api/v1/game/player/action"sv) {
             return HandleActionRequest(req);
         }
         if (url_decoded == "/api/v1/game/tick"sv) {
@@ -202,8 +202,8 @@ private:
         model::Map::Id map_id{""};
         try {
             auto req_data = json::parse(req.body()).as_object();
-            user_name = req_data.at("userName"sv).as_string();
-            *map_id =  req_data.at("mapId"sv).as_string();
+            user_name = req_data.at("userName"sv).as_string().c_str();
+            *map_id =  req_data.at("mapId"sv).as_string().c_str();
         } catch (...) { 
             return MakeErrorResponse(ResponseErrorType::InvalidJSON, req, ApiRequestType::GameJoin);
         }
@@ -228,9 +228,7 @@ private:
                                      {"authToken"sv, player_info.token}, 
                                      {"playerId"sv, player_info.player->GetId()}
                                   }), 
-                                  req, 
-                                  ContentType::APPLICATION_JSON,
-                                  "no-cache"sv);
+                                  req);
     }
 
     template <typename Body, typename Allocator>
@@ -251,9 +249,7 @@ private:
 
             return MakeStringResponse(http::status::ok, 
                                     json::serialize(players_by_id), 
-                                    req, 
-                                    ContentType::APPLICATION_JSON,
-                                    "no-cache"sv);
+                                    req);
         }, ApiRequestType::Players);
     }
 
@@ -273,15 +269,13 @@ private:
                 players_by_id[std::to_string(dog->GetId())] = json::object{
                     {"pos"sv, json::array{dog->GetPosition().x, dog->GetPosition().y}},
                     {"speed"sv, json::array{dog->GetSpeed().x, dog->GetSpeed().y}},
-                    {"dir"sv, std::string{model::Dog::GetDirectionAsChar(dog->GetDirection())}}
+                    {"dir"sv, model::Dog::DirectionToString(dog->GetDirection())}
                 };
             }
 
             return MakeStringResponse(http::status::ok, 
                                       json::serialize(json::object{{"players"sv, players_by_id}}), 
-                                      req,
-                                      ContentType::APPLICATION_JSON,
-                                      "no-cache"sv);
+                                      req);
         }, ApiRequestType::GameState);
     }
 
@@ -290,21 +284,15 @@ private:
         if (req.method() != http::verb::post) {
             return MakeErrorResponse(ResponseErrorType::InvalidMethod, req, ApiRequestType::Action);
         }
-        if (req[http::field::content_type] != ContentType::APPLICATION_JSON) {
+        if (boost::algorithm::to_lower_copy(std::string(req[http::field::content_type])) != ContentType::APPLICATION_JSON) {
             return MakeErrorResponse(ResponseErrorType::InvalidContentType, req, ApiRequestType::Action);
         }
         
-        return ExecuteAuthorized(req, [&req, this](const players::Players::Token& token){
+        return ExecuteAuthorized(req, [&req, this](const players::Players::Token& token) {
             std::optional<model::Dog::Direction> direction;
             try {
                 auto req_data = json::parse(req.body()).as_object();
-                auto direction_str = req_data.at("move"sv).as_string();
-                if (direction_str.size() > 1) {
-                    throw std::invalid_argument("Whrong direction as string"s);
-                }
-                if (!direction_str.empty()) {
-                    direction = model::Dog::GetDirectionFromChar(direction_str.at(0));
-                }
+                direction.emplace(model::Dog::DirectionFromString(req_data.at("move"sv).as_string().c_str()));
             } catch (...) { 
                 return MakeErrorResponse(ResponseErrorType::InvalidJSON, req, ApiRequestType::Action);
             }
@@ -317,9 +305,7 @@ private:
 
             return MakeStringResponse(http::status::ok, 
                                       json::serialize(json::object{}), 
-                                      req,
-                                      ContentType::APPLICATION_JSON,
-                                      "no-cache"sv);
+                                      req);
         }, ApiRequestType::Action);
     }
 
@@ -344,9 +330,7 @@ private:
 
         return MakeStringResponse(http::status::ok, 
                                     json::serialize(json::object{}), 
-                                    req,
-                                    ContentType::APPLICATION_JSON,
-                                    "no-cache"sv);
+                                    req);
     }
 
     template <typename Body, typename Allocator>
@@ -404,7 +388,7 @@ private:
                                              std::string_view body, 
                                              http::request<Body, http::basic_fields<Allocator>>& request,
                                              std::string_view content_type = ContentType::APPLICATION_JSON,
-                                             std::optional<std::string_view> cache_control = {}) {
+                                             bool with_cache = false) {
         StringResponse response(status, request.version());
         response.body() = body;
         response.content_length(body.size());
@@ -412,8 +396,8 @@ private:
 
         // Headers
         response.set(http::field::content_type, content_type);
-        if (cache_control) {
-            response.set(http::field::cache_control, *cache_control);
+        if (!with_cache) {
+            response.set(http::field::cache_control, "no-cache"sv);
         }
 
         return response;
@@ -464,9 +448,7 @@ private:
                                                                         {"code"sv, "invalidMethod"sv}, 
                                                                         {"message"sv, "Invalid method"sv}
                                                                     }), 
-                                                                    req, 
-                                                                    ContentType::APPLICATION_JSON,
-                                                                    "no-cache"sv);
+                                                                    req);
                     result.set(http::field::allow, "GET, HEAD"sv);
                     break;
                 }
@@ -476,9 +458,7 @@ private:
                                                                         {"code"sv, "invalidToken"sv}, 
                                                                         {"message"sv, "Authorization header is missing"sv}
                                                                     }), 
-                                                                    req, 
-                                                                    ContentType::APPLICATION_JSON,
-                                                                    "no-cache"sv);
+                                                                    req);
                     break;
                 }
                 case ResponseErrorType::NoPlayerWithToken: {
@@ -487,9 +467,7 @@ private:
                                                                         {"code"sv, "unknownToken"sv}, 
                                                                         {"message"sv, "Player token has not been found"sv}
                                                                     }), 
-                                                                    req, 
-                                                                    ContentType::APPLICATION_JSON,
-                                                                    "no-cache"sv);
+                                                                    req);
                     break;
                 }
             }
@@ -503,9 +481,7 @@ private:
                                                                     {"code"sv, "invalidMethod"sv}, 
                                                                     {"message"sv, "Invalid method"sv}
                                                                 }), 
-                                                                req, 
-                                                                ContentType::APPLICATION_JSON,
-                                                                "no-cache"sv);
+                                                                req);
                     result.set(http::field::allow, "GET, HEAD"sv);
                     break;
                 }
@@ -515,9 +491,7 @@ private:
                                                                     {"code"sv, "invalidToken"sv}, 
                                                                     {"message"sv, "Authorization header is required"sv}
                                                                 }), 
-                                                                req, 
-                                                                ContentType::APPLICATION_JSON,
-                                                                "no-cache"sv);
+                                                                req);
                     break;
                 }
                 case ResponseErrorType::NoPlayerWithToken: {
@@ -526,9 +500,7 @@ private:
                                                                     {"code"sv, "unknownToken"sv}, 
                                                                     {"message"sv, "Player token has not been found"sv}
                                                                 }), 
-                                                                req, 
-                                                                ContentType::APPLICATION_JSON,
-                                                                "no-cache"sv);
+                                                                req);
                     break;
                 }
             }
@@ -542,9 +514,7 @@ private:
                                                                     {"code"sv, "invalidMethod"sv}, 
                                                                     {"message"sv, "Only POST method is expected"sv}
                                                                 }), 
-                                                                req, 
-                                                                ContentType::APPLICATION_JSON,
-                                                                "no-cache"sv);
+                                                                req);
                     result.set(http::field::allow, "POST"sv);
                     break;
                 }
@@ -554,9 +524,7 @@ private:
                                                                     {"code"sv, "invalidArgument"sv}, 
                                                                     {"message"sv, "Invalid name"sv}
                                                                 }), 
-                                                                req, 
-                                                                ContentType::APPLICATION_JSON,
-                                                                "no-cache"sv);
+                                                                req);
                     break;
                 }
                 case ResponseErrorType::InvalidMapId: {
@@ -565,9 +533,7 @@ private:
                                                                     {"code"sv, "mapNotFound"sv}, 
                                                                     {"message"sv, "Map not found"sv}
                                                                 }), 
-                                                                req, 
-                                                                ContentType::APPLICATION_JSON, 
-                                                                "no-cache"sv);
+                                                                req);
                     break;
                 }
                 case ResponseErrorType::InvalidJSON: {
@@ -576,9 +542,7 @@ private:
                                                                     {"code"sv, "invalidArgument"sv}, 
                                                                     {"message"sv, "Join game request parse error"sv}
                                                                 }), 
-                                                                req, 
-                                                                ContentType::APPLICATION_JSON,
-                                                                "no-cache"sv);
+                                                                req);
                     break;
                 }
             }
@@ -593,9 +557,7 @@ private:
                                                                     {"code"sv, "invalidMethod"sv}, 
                                                                     {"message"sv, "Invalid method"sv}
                                                                 }), 
-                                                                req, 
-                                                                ContentType::APPLICATION_JSON,
-                                                                "no-cache"sv);
+                                                                req);
                     result.set(http::field::allow, "POST"sv);
                     break;
                 }
@@ -605,9 +567,7 @@ private:
                                                                     {"code", "invalidArgument"s},
                                                                     {"message", "Invalid content type"s}
                                                                 })), 
-                                                                req, 
-                                                                ContentType::APPLICATION_JSON,
-                                                                "no-cache"sv);
+                                                                req);
                     break;
                 }
                 case ResponseErrorType::InvalidJSON: {
@@ -616,9 +576,7 @@ private:
                                                                     {"code"sv, "invalidArgument"sv}, 
                                                                     {"message"sv, "Failed to parse action"sv}
                                                                 }), 
-                                                                req, 
-                                                                ContentType::APPLICATION_JSON,
-                                                                "no-cache"sv);
+                                                                req);
                     break;
                 }
                 case ResponseErrorType::NoPlayerWithToken: {
@@ -627,9 +585,7 @@ private:
                                                                     {"code"sv, "unknownToken"sv}, 
                                                                     {"message"sv, "Player token has not been found"sv}
                                                                 }), 
-                                                                req, 
-                                                                ContentType::APPLICATION_JSON,
-                                                                "no-cache"sv);
+                                                                req);
                     break;
                 }
                 case ResponseErrorType::InvalidAuthorization: {
@@ -638,12 +594,11 @@ private:
                                                                     {"code"sv, "invalidToken"sv}, 
                                                                     {"message"sv, "Authorization header is required"sv}
                                                                 }), 
-                                                                req, 
-                                                                ContentType::APPLICATION_JSON,
-                                                                "no-cache"sv);
+                                                                req);
                     break;
                 }
             }
+            break;
         }
         case ApiRequestType::Tick: {
             switch (response_error_type)
@@ -654,9 +609,7 @@ private:
                                                                     {"code"sv, "invalidMethod"sv}, 
                                                                     {"message"sv, "Invalid method"sv}
                                                                 }), 
-                                                                req, 
-                                                                ContentType::APPLICATION_JSON,
-                                                                "no-cache"sv);
+                                                                req);
                     result.set(http::field::allow, "POST"sv);
                     break;
                 }
@@ -666,12 +619,11 @@ private:
                                                                     {"code"sv, "invalidArgument"sv}, 
                                                                     {"message"sv, "Failed to parse tick request JSON"sv}
                                                                 }), 
-                                                                req, 
-                                                                ContentType::APPLICATION_JSON,
-                                                                "no-cache"sv);
+                                                                req);
                     break;
                 }
             }
+            break;
         }
         }
 
@@ -683,7 +635,7 @@ private:
                                                                 {"code", "badRequest"s},
                                                                 {"message", "Bad request"s}
                                                              })), 
-                                                             req);
+                                                             req);//!!!
                 break;
             }
             case ResponseErrorType::MapNotFound: {
@@ -692,21 +644,21 @@ private:
                                                                 {"code", "mapNotFound"s},
                                                                 {"message", "Map not found"s}
                                                              })), 
-                                                             req);
+                                                             req);//!!!
                 break;
             }
             case ResponseErrorType::StaticDataFileNotFound: {
                 result = MakeStringResponse(http::status::not_found, 
                                             "File not found"sv, 
                                             req, 
-                                            ContentType::TEXT_PLAIN);
+                                            ContentType::TEXT_PLAIN);//!!!
                 break;
             }
             case ResponseErrorType::StaticDataFileNotSubPath: {
                 result = MakeStringResponse(http::status::bad_request, 
                                             "No rights to path"sv, 
                                             req, 
-                                            ContentType::TEXT_PLAIN);
+                                            ContentType::TEXT_PLAIN);//!!!
                 break;
             }
         }

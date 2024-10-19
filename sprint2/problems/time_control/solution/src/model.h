@@ -233,23 +233,25 @@ public:
     }
 
 public:
-    static char GetDirectionAsChar(Direction direction) noexcept {
-        static const std::unordered_map<Direction,char> direction_to_ch{
-            {Direction::NORTH, 'U'},
-            {Direction::SOUTH, 'D'},
-            {Direction::WEST, 'L'},
-            {Direction::EAST, 'R'}
+    static std::string DirectionToString(Direction direction) noexcept {
+        using namespace std::literals;
+        static const auto info = std::unordered_map<Direction,std::string>{
+            {Direction::NORTH, "U"s},
+            {Direction::SOUTH, "D"s},
+            {Direction::WEST, "L"s},
+            {Direction::EAST, "R"s}
         };
-        return direction_to_ch.at(direction);
+        return info.at(direction);
     }
-    static Direction GetDirectionFromChar(char direction) noexcept {
-        static const std::unordered_map<char,Direction> ch_to_direction{
-            {'U', Direction::NORTH},
-            {'D', Direction::SOUTH},
-            {'L', Direction::WEST},
-            {'R', Direction::EAST}
+    static Direction DirectionFromString(const std::string& direction) noexcept {
+        using namespace std::literals;
+        static const auto info = std::unordered_map<std::string,Direction>{
+            {"U"s, Direction::NORTH},
+            {"D"s, Direction::SOUTH},
+            {"L"s, Direction::WEST},
+            {"R"s, Direction::EAST}
         };
-        return ch_to_direction.at(direction);
+        return info.at(direction);
     }
 
 private:
