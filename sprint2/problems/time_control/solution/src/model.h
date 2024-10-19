@@ -216,6 +216,9 @@ public:
     PointD GetPosition() const noexcept {
         return position_;
     }
+    void SetPosition(PointD position) {
+        position_ = position;
+    }
     Speed GetSpeed() const noexcept {
         return speed_;
     }
@@ -284,6 +287,8 @@ public:
         return dog;
     }
     PointD GenerateNewDogPosition() const noexcept {
+        return PointD{CoordD(map_->GetRoads().at(0).GetStart().x), CoordD(map_->GetRoads().at(0).GetStart().y)};
+
         std::random_device rand_device; 
         std::mt19937_64 rand_engine(rand_device());
 

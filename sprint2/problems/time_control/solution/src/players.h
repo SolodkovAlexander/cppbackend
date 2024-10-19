@@ -5,6 +5,7 @@
 #include <iomanip>
 #include <optional>
 #include <random>
+#include <unordered_set>
 #include <sstream>
 #include <unordered_map>
 #include <vector>
@@ -41,6 +42,102 @@ public:
             dog_->SetDirection(*direction);
         }        
         dog_->SetSpeed(dog_speed);
+    }
+
+    void Move(int time_ms) {
+        auto speed = dog_->GetSpeed();
+        if (speed.x == 0.0 && speed.y == 0.0) {
+            return;
+        }
+
+        auto time_s_d = model::DimensionD(time_ms) * 0.001;
+        auto current_pos = dog_->GetPosition();
+        auto next_pos = model::PointD{current_pos.x + (speed.x * time_s_d), current_pos.y + (speed.y * time_s_d)};
+
+        const auto& roads = session_->GetMap()->GetRoads();
+        
+        // Есть ли дорога, которая содержит получившеюся позицию
+        auto any_road_it = std::find_if(roads.begin(), roads.end(), [&next_pos](const model::Road& road){ 
+            if (road.IsHorizontal()) {
+                return (next_pos.x >= road.GetStart().x 
+                        && next_pos.x <= road.GetEnd().x
+                        && next_pos.y >= model::DimensionD(road.GetStart().y) - 0.4
+                        && next_pos.y <= model::DimensionD(road.GetStart().y) + 0.4);
+            }
+            return (next_pos.y >= road.GetStart().y
+                    && next_pos.y <= road.GetEnd().y
+                    && next_pos.x >= model::DimensionD(road.GetStart().x) - 0.4
+                    && next_pos.x <= model::DimensionD(road.GetStart().x) + 0.4);
+        });
+        if (any_road_it != roads.end()) {
+            dog_->SetPosition(next_pos);
+            return;
+        }
+
+        // Нет дороги, которая содержала бы вычисленную позицию: ищем границу какой-то дороги взависимости от направления
+        next_pos = current_pos;
+        bool next_pos_on_road = true;
+        std::unordered_set<size_t> viewed_road_indeces;
+        while (next_pos_on_road) {
+            int64_t roadIndex = FindRoadIndex(next_pos, viewed_road_indeces);
+            if (roadIndex == -1) {
+                break;
+            }
+
+            const auto& road = roads.at(roadIndex);
+            switch (dog_->GetDirection())
+            {
+            case model::Dog::Direction::NORTH: {
+                next_pos.y = std::min(road.GetStart().y, road.GetEnd().y);
+                next_pos.y -= 0.4;
+                break;
+            }
+            case model::Dog::Direction::SOUTH: {
+                next_pos.y = std::max(road.GetStart().y, road.GetEnd().y);
+                next_pos.y += 0.4;
+                break;
+            }
+            case model::Dog::Direction::WEST: {
+                next_pos.x = std::min(road.GetStart().x, road.GetEnd().x);
+                next_pos.x -= 0.4;
+                break;
+            }
+            case model::Dog::Direction::EAST: {
+                next_pos.x = std::max(road.GetStart().x, road.GetEnd().x);
+                next_pos.x += 0.4;
+                break;
+            }
+            }
+        }
+        dog_->SetSpeed(model::Dog::Speed{0.0, 0.0});
+        dog_->SetPosition(next_pos);
+    }
+
+private:
+    int64_t FindRoadIndex(model::PointD pos, std::unordered_set<size_t>& viewed_road_indeces) {
+        const auto& roads = session_->GetMap()->GetRoads();
+        for (size_t i = 0; i < roads.size(); ++i) {
+            if (viewed_road_indeces.count(i)) {
+                continue;
+            }
+
+            const auto& road = roads.at(i);
+            if ((road.IsHorizontal()
+                 && pos.x >= road.GetStart().x 
+                 && pos.x <= road.GetEnd().x
+                 && pos.y >= model::DimensionD(road.GetStart().y) - 0.4
+                 && pos.y <= model::DimensionD(road.GetStart().y) + 0.4)
+                || (road.IsVertical()
+                    && pos.y >= road.GetStart().y
+                    && pos.y <= road.GetEnd().y
+                    && pos.x >= model::DimensionD(road.GetStart().x) - 0.4
+                    && pos.x <= model::DimensionD(road.GetStart().x) + 0.4)) {
+                viewed_road_indeces.insert(i);
+                return i;
+            }
+        }
+        
+        return -1;
     }
 
 private:
@@ -84,8 +181,10 @@ public:
         return player_by_token_[token];
     }
 
-    void MoveAllPlayers(int time) {
-
+    void MoveAllPlayers(int time_ms) {
+        for (const auto& player : players_) {
+            player->Move(time_ms);
+        }
     }
 
 private:

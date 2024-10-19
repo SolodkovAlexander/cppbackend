@@ -31,7 +31,7 @@ Map MapFromJson(const json::object& obj, Game &game) {
     auto map = Map{
         Map::Id(obj.at("id"s).as_string().data()), 
         obj.at("name"s).as_string().data(),
-        obj.contains("dogSpeed"sv) ? obj.at("dogSpeed"sv).as_double() : game.GetMapDefaultSpeed()
+        obj.count("dogSpeed"s) ? obj.at("dogSpeed"s).as_double() : game.GetMapDefaultSpeed()
     };
 
     assert(obj.at("roads"s).as_array().size() > 0);
