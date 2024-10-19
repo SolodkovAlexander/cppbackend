@@ -156,7 +156,7 @@ public:
         return offices_;
     }
 
-    const DimensionD& GetDefaultSpeed() const noexcept {
+    DimensionD GetDefaultSpeed() const noexcept {
         return default_speed_;
     }
 
@@ -224,6 +224,9 @@ public:
     }
     Direction GetDirection() const noexcept {
         return direction_;
+    }
+    void SetDirection(Direction direction) {
+        direction_ = direction;
     }
     const std::string& GetName() const noexcept {
         return name_;

@@ -91,7 +91,8 @@ enum class ApiRequestType {
     GameJoin, 
     Players,
     GameState,
-    Action 
+    Action,
+    Tick  
 };
 
 class RequestHandler : public std::enable_shared_from_this<RequestHandler> {
@@ -162,6 +163,9 @@ private:
         if (url_decoded == "/api/v1/game/action"sv) {
             return HandleActionRequest(req);
         }
+        if (url_decoded == "/api/v1/game/tick"sv) {
+            return HandleTickRequest(req);
+        }        
 
         if (req.method() != http::verb::get && req.method() != http::verb::head) {
             return MakeErrorResponse(ResponseErrorType::BadRequest, req);
@@ -309,7 +313,7 @@ private:
             if (!player) {
                 return MakeErrorResponse(ResponseErrorType::NoPlayerWithToken, req, ApiRequestType::Action);
             }
-            player->Move(direction);
+            player->ChangeDirection(direction);
 
             return MakeStringResponse(http::status::ok, 
                                       json::serialize(json::object{}), 
@@ -317,6 +321,32 @@ private:
                                       ContentType::APPLICATION_JSON,
                                       "no-cache"sv);
         }, ApiRequestType::Action);
+    }
+
+    template <typename Body, typename Allocator>
+    RequestResponse HandleTickRequest(http::request<Body, http::basic_fields<Allocator>>& req) {
+        if (req.method() != http::verb::post) {
+            return MakeErrorResponse(ResponseErrorType::InvalidMethod, req, ApiRequestType::Tick);
+        }
+        
+        int time_delta{0};
+        try {
+            auto req_data = json::parse(req.body()).as_object();
+            time_delta = req_data.at("timeDelta"sv).as_int64();
+            if (time_delta < 0) {
+                throw std::invalid_argument("Whrong time"s);
+            }
+        } catch (...) { 
+            return MakeErrorResponse(ResponseErrorType::InvalidJSON, req, ApiRequestType::Tick);
+        }
+
+        players_.MoveAllPlayers(time_delta);
+
+        return MakeStringResponse(http::status::ok, 
+                                    json::serialize(json::object{}), 
+                                    req,
+                                    ContentType::APPLICATION_JSON,
+                                    "no-cache"sv);
     }
 
     template <typename Body, typename Allocator>
@@ -607,6 +637,34 @@ private:
                                                                 json::serialize(json::object{
                                                                     {"code"sv, "invalidToken"sv}, 
                                                                     {"message"sv, "Authorization header is required"sv}
+                                                                }), 
+                                                                req, 
+                                                                ContentType::APPLICATION_JSON,
+                                                                "no-cache"sv);
+                    break;
+                }
+            }
+        }
+        case ApiRequestType::Tick: {
+            switch (response_error_type)
+            {
+                case ResponseErrorType::InvalidMethod: {
+                    result = MakeStringResponse<Body, Allocator>(http::status::method_not_allowed, 
+                                                                json::serialize(json::object{
+                                                                    {"code"sv, "invalidMethod"sv}, 
+                                                                    {"message"sv, "Invalid method"sv}
+                                                                }), 
+                                                                req, 
+                                                                ContentType::APPLICATION_JSON,
+                                                                "no-cache"sv);
+                    result.set(http::field::allow, "POST"sv);
+                    break;
+                }
+                case ResponseErrorType::InvalidJSON: {
+                    result = MakeStringResponse<Body, Allocator>(http::status::bad_request, 
+                                                                json::serialize(json::object{
+                                                                    {"code"sv, "invalidArgument"sv}, 
+                                                                    {"message"sv, "Failed to parse tick request JSON"sv}
                                                                 }), 
                                                                 req, 
                                                                 ContentType::APPLICATION_JSON,

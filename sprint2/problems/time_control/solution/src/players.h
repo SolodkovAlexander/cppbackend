@@ -25,12 +25,12 @@ public:
     model::GameSession* GetSession() const {
         return session_;
     }
-    void Move(std::optional<model::Dog::Direction> direction) {
+    void ChangeDirection(std::optional<model::Dog::Direction> direction) {
         auto dog_speed = dog_->GetSpeed();
         if (!direction) {
             dog_speed = model::Dog::Speed{0.0, 0.0};
         } else {
-            model::DimensionD speed_value(std::abs(std::max(dog_speed.x, dog_speed.y)));
+            model::DimensionD speed_value(session_->GetMap()->GetDefaultSpeed());
             switch (*direction)
             {
             case model::Dog::Direction::NORTH: dog_speed = model::Dog::Speed{0.0, -speed_value}; break;
@@ -38,6 +38,7 @@ public:
             case model::Dog::Direction::WEST: dog_speed = model::Dog::Speed{-speed_value, 0.0}; break;
             case model::Dog::Direction::EAST: dog_speed = model::Dog::Speed{speed_value, 0.0}; break;
             }
+            dog_->SetDirection(*direction);
         }        
         dog_->SetSpeed(dog_speed);
     }
@@ -81,6 +82,10 @@ public:
             return nullptr;
         }
         return player_by_token_[token];
+    }
+
+    void MoveAllPlayers(int time) {
+
     }
 
 private:
