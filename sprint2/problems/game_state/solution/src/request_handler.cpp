@@ -28,7 +28,7 @@ std::string_view RequestHandler::ContentType::GetContentTypeByFileExtension(fs::
         {".svgz"s, ContentType::IMAGE_SVG_XML},
         {".mp3"s, ContentType::AUDIO_MPEG}
     };
-    auto file_extension = boost::algorithm::to_lower_copy(file_path.extension().string());    ;
+    auto file_extension = boost::algorithm::to_lower_copy(file_path.extension().string());
     if (!file_extension_to_content_type.contains(file_extension)) {
         return ContentType::UNKNOWN;
     }

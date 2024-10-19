@@ -16,6 +16,13 @@ struct Point {
     Coord x, y;
 };
 
+using DimensionD = double;
+using CoordD = DimensionD;
+
+struct PointD {
+    CoordD x, y;
+};
+
 struct Size {
     Dimension width, height;
 };
@@ -171,24 +178,57 @@ private:
 
 class Dog {
 public:
+    enum class Direction {
+        NORTH,
+        SOUTH,
+        WEST,
+        EAST
+    };
+    struct Speed {
+        DimensionD x, y;
+    };
+
+public:
     using DogId = std::uint64_t;
 
-    Dog(const std::string& name, DogId id) : 
-        name_(name),
-        id_(id)
+    Dog(std::string name, DogId id, PointD position = PointD{0.0, 0.0}) 
+        : name_(std::move(name)),
+          id_(id),
+          position_(position)
     {}
 
 public:
-    DogId GetId() const {
+    DogId GetId() const noexcept {
         return id_;
     }
-    std::string GetName() const {
+    PointD GetPosition() const noexcept {
+        return position_;
+    }
+    Speed GetSpeed() const noexcept {
+        return speed_;
+    }
+    Direction GetDirection() const noexcept {
+        return direction_;
+    }
+    char GetDirectionAsChar() const noexcept {
+        static const std::unordered_map<Direction,char> direction_to_str{
+            {Direction::NORTH, 'U'},
+            {Direction::SOUTH, 'D'},
+            {Direction::WEST, 'L'},
+            {Direction::EAST, 'R'}
+        };
+        return direction_to_str.at(direction_);
+    }
+    const std::string& GetName() const noexcept {
         return name_;
     }
 
 private:
     std::string name_;
     DogId id_;
+    Direction direction_ = Direction::NORTH;
+    PointD position_{0.0, 0.0};
+    Speed speed_{0.0, 0.0};
 };
 
 class GameSession {

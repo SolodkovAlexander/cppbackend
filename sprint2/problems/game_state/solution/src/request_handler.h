@@ -4,6 +4,7 @@
 #include "http_server.h"
 #include "players.h"
 
+#include <boost/algorithm/string.hpp>
 #include <boost/asio/strand.hpp>
 #include <boost/beast.hpp>
 #include <boost/json.hpp>
@@ -85,8 +86,13 @@ enum class ResponseErrorType {
     
     // /api/v1/game/players
     PlayersInvalidMethod,
-    PlayersNoPlayerWithToken,
     PlayersInvalidAuthorization,
+    PlayersNoPlayerWithToken,
+
+    // /api/v1/game/state
+    GameStateInvalidMethod,
+    GameStateInvalidAuthorization,
+    GameStateNoPlayerWithToken,
 
     // Static data
     StaticDataFileNotFound,
@@ -154,6 +160,9 @@ private:
         }
         if (url_decoded == "/api/v1/game/players"sv) {
             return HandlePlayersRequest(req);
+        }
+        if (url_decoded == "/api/v1/game/state"sv) {
+            return HandleGameStateRequest(req);
         }
 
         if (req.method() != http::verb::get
@@ -235,14 +244,14 @@ private:
             return MakeErrorResponse(ResponseErrorType::PlayersInvalidMethod, req);
         }
 
-        static const auto token_regex = std::regex(R"/(Bearer\s(.*))/");
+        static const auto token_regex = std::regex(R"(Bearer\s([0-9a-fA-F]{32}))");
         std::smatch match_results;
         std::string auth = req[http::field::authorization];
         if (!regex_match(auth, match_results, token_regex)) {
             return MakeErrorResponse(ResponseErrorType::PlayersInvalidAuthorization, req);
         }
 
-        auto player = players_.FindByToken(match_results[1]);
+        auto player = players_.FindByToken(boost::algorithm::to_lower_copy(match_results[1].str()));
         if (!player) {
             return MakeErrorResponse(ResponseErrorType::PlayersNoPlayerWithToken, req);
         }
@@ -254,6 +263,41 @@ private:
 
         return MakeStringResponse(http::status::ok, 
                                   json::serialize(players_by_id), 
+                                  req, 
+                                  ContentType::APPLICATION_JSON,
+                                  "no-cache"sv);
+    }
+
+    template <typename Body, typename Allocator>
+    RequestResponse HandleGameStateRequest(http::request<Body, http::basic_fields<Allocator>>& req) {
+        if (req.method() != http::verb::get
+            && req.method() != http::verb::head) {
+            return MakeErrorResponse(ResponseErrorType::GameStateInvalidMethod, req);
+        }
+        
+        static const auto token_regex = std::regex(R"(Bearer\s([0-9a-fA-F]{32}))");
+        std::smatch match_results;
+        std::string auth = req[http::field::authorization];
+        if (!regex_match(auth, match_results, token_regex)) {
+            return MakeErrorResponse(ResponseErrorType::GameStateInvalidAuthorization, req);
+        }
+
+        auto player = players_.FindByToken(boost::algorithm::to_lower_copy(match_results[1].str()));
+        if (!player) {
+            return MakeErrorResponse(ResponseErrorType::GameStateNoPlayerWithToken, req);
+        }
+        
+        json::object players_by_id;
+        for (auto dog : player->GetSession()->GetDogs()) {
+            players_by_id[std::to_string(dog->GetId())] = json::object{
+                {"pos"sv, json::array{dog->GetPosition().x, dog->GetPosition().y}},
+                {"speed"sv, json::array{dog->GetSpeed().x, dog->GetSpeed().y}},
+                {"dir"sv, std::string{dog->GetDirectionAsChar()}}
+            };
+        }
+
+        return MakeStringResponse(http::status::ok, 
+                                  json::serialize(json::object{{"players"sv, players_by_id}}), 
                                   req, 
                                   ContentType::APPLICATION_JSON,
                                   "no-cache"sv);
@@ -415,6 +459,7 @@ private:
                                                              "no-cache"sv);
                 break;
             }
+            case ResponseErrorType::GameStateInvalidMethod:
             case ResponseErrorType::PlayersInvalidMethod: {
                 result = MakeStringResponse<Body, Allocator>(http::status::method_not_allowed, 
                                                              json::serialize(json::object{
@@ -427,11 +472,11 @@ private:
                 result.set(http::field::allow, "GET, HEAD"sv);
                 break;
             }
-            case ResponseErrorType::PlayersNoPlayerWithToken: {
+            case ResponseErrorType::GameStateInvalidAuthorization: {
                 result = MakeStringResponse<Body, Allocator>(http::status::unauthorized, 
                                                              json::serialize(json::object{
-                                                                {"code"sv, "unknownToken"sv}, 
-                                                                {"message"sv, "Player token has not been found"sv}
+                                                                {"code"sv, "invalidToken"sv}, 
+                                                                {"message"sv, "Authorization header is required"sv}
                                                              }), 
                                                              req, 
                                                              ContentType::APPLICATION_JSON,
@@ -443,6 +488,18 @@ private:
                                                              json::serialize(json::object{
                                                                 {"code"sv, "invalidToken"sv}, 
                                                                 {"message"sv, "Authorization header is missing"sv}
+                                                             }), 
+                                                             req, 
+                                                             ContentType::APPLICATION_JSON,
+                                                             "no-cache"sv);
+                break;
+            }
+            case ResponseErrorType::GameStateNoPlayerWithToken:
+            case ResponseErrorType::PlayersNoPlayerWithToken: {
+                result = MakeStringResponse<Body, Allocator>(http::status::unauthorized, 
+                                                             json::serialize(json::object{
+                                                                {"code"sv, "unknownToken"sv}, 
+                                                                {"message"sv, "Player token has not been found"sv}
                                                              }), 
                                                              req, 
                                                              ContentType::APPLICATION_JSON,
