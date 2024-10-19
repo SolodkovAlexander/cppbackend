@@ -30,12 +30,13 @@ public:
         if (!direction) {
             dog_speed = model::Dog::Speed{0.0, 0.0};
         } else {
+            model::DimensionD speed_value(std::abs(std::max(dog_speed.x, dog_speed.y)));
             switch (*direction)
             {
-            case model::Dog::Direction::NORTH: dog_speed = model::Dog::Speed{0.0, -dog_speed.y}; break;
-            case model::Dog::Direction::SOUTH: dog_speed = model::Dog::Speed{0.0, dog_speed.y}; break;
-            case model::Dog::Direction::WEST: dog_speed = model::Dog::Speed{-dog_speed.x, 0.0}; break;
-            case model::Dog::Direction::EAST: dog_speed = model::Dog::Speed{dog_speed.x, 0.0}; break;
+            case model::Dog::Direction::NORTH: dog_speed = model::Dog::Speed{0.0, -speed_value}; break;
+            case model::Dog::Direction::SOUTH: dog_speed = model::Dog::Speed{0.0, speed_value}; break;
+            case model::Dog::Direction::WEST: dog_speed = model::Dog::Speed{-speed_value, 0.0}; break;
+            case model::Dog::Direction::EAST: dog_speed = model::Dog::Speed{speed_value, 0.0}; break;
             }
         }        
         dog_->SetSpeed(dog_speed);
