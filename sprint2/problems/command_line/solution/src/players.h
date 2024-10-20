@@ -26,22 +26,23 @@ public:
     model::GameSession* GetSession() const {
         return session_;
     }
-    void ChangeDirection(std::optional<model::Dog::Direction> direction) {
-        auto dog_speed = dog_->GetSpeed();
-        if (!direction) {
-            dog_speed = model::Dog::Speed{0.0, 0.0};
-        } else {
-            model::DimensionD speed_value(session_->GetMap()->GetDefaultSpeed());
-            switch (*direction)
-            {
-            case model::Dog::Direction::NORTH: dog_speed = model::Dog::Speed{0.0, -speed_value}; break;
-            case model::Dog::Direction::SOUTH: dog_speed = model::Dog::Speed{0.0, speed_value}; break;
-            case model::Dog::Direction::WEST: dog_speed = model::Dog::Speed{-speed_value, 0.0}; break;
-            case model::Dog::Direction::EAST: dog_speed = model::Dog::Speed{speed_value, 0.0}; break;
-            }
-            dog_->SetDirection(*direction);
-        }        
-        dog_->SetSpeed(dog_speed);
+
+    void SetSpeed(model::Dog::Speed speed) {
+        dog_->SetSpeed(speed);
+    }
+
+    void ChangeDirection(model::Dog::Direction direction) {
+        model::DimensionD speed_value(session_->GetMap()->GetDefaultSpeed());
+        model::Dog::Speed speed{0.0, 0.0};
+        switch (direction)
+        {
+            case model::Dog::Direction::NORTH: speed = model::Dog::Speed{0.0, -speed_value}; break;
+            case model::Dog::Direction::SOUTH: speed = model::Dog::Speed{0.0, speed_value}; break;
+            case model::Dog::Direction::WEST: speed = model::Dog::Speed{-speed_value, 0.0}; break;
+            case model::Dog::Direction::EAST: speed = model::Dog::Speed{speed_value, 0.0}; break;
+        }
+        dog_->SetDirection(direction);
+        dog_->SetSpeed(speed);
     }
 
     void Move(std::chrono::milliseconds time_delta) {

@@ -1,9 +1,4 @@
 #pragma once
-#include "json_logger.h"
-#include "model.h"
-#include "http_server.h"
-#include "players.h"
-
 #include <boost/algorithm/string.hpp>
 #include <boost/asio/strand.hpp>
 #include <boost/beast.hpp>
@@ -14,6 +9,10 @@
 #include <regex>
 #include <variant>
 
+#include "application.h"
+#include "json_logger.h"
+#include "http_server.h"
+
 namespace http_handler {
 namespace net = boost::asio;
 namespace beast = boost::beast;
@@ -23,7 +22,7 @@ namespace urls = boost::urls;
 namespace sys = boost::system;
 namespace fs = std::filesystem;
 using namespace std::literals;
-using namespace model;
+using namespace game_scenarios;
 
 using StringResponse = http::response<http::string_body>;
 using FileResponse = http::response<http::file_body>;
@@ -79,7 +78,6 @@ enum class ResponseErrorType {
     InvalidJSON,
     EmptyPlayerName,
     InvalidMapId,
-    InvalidMap,
     MapNotFound,
     StaticDataFileNotFound,
     StaticDataFileNotSubPath
@@ -87,6 +85,7 @@ enum class ResponseErrorType {
 
 enum class ApiRequestType {
     Any,
+    Map,
     Maps,
     GameJoin, 
     Players,
@@ -99,9 +98,8 @@ class RequestHandler : public std::enable_shared_from_this<RequestHandler> {
 public:
     using Strand = net::strand<net::io_context::executor_type>;
 
-    explicit RequestHandler(model::Game& game, players::Players& players, const std::string &static_data_path, Strand api_strand) :
-          game_{game},
-          players_{players},
+    explicit RequestHandler(Application& app, const std::string &static_data_path, Strand api_strand) :
+          app_{app},
           static_data_path_{fs::weakly_canonical(static_data_path)},
           api_strand_{api_strand}
     {}
@@ -148,7 +146,7 @@ public:
 
 private:
     template <typename Body, typename Allocator>
-    RequestResponse HandleApiRequest(http::request<Body, http::basic_fields<Allocator>> req) {
+    StringResponse HandleApiRequest(http::request<Body, http::basic_fields<Allocator>> req) {
         urls::decode_view url_decoded(req.target());
 
         if (url_decoded == "/api/v1/game/join"sv) {
@@ -165,114 +163,75 @@ private:
         }
         if (url_decoded == "/api/v1/game/tick"sv) {
             return HandleTickRequest(req);
-        }        
-
-        if (req.method() != http::verb::get && req.method() != http::verb::head) {
-            return MakeErrorResponse(ResponseErrorType::BadRequest, req);
         }
         if (url_decoded == "/api/v1/maps"sv) {
-            return MakeStringResponse(http::status::ok, json::serialize(MapsToShortJson(game_.GetMaps())), req);
+            return HandleMapsRequest(req);
         }
 
-        static const auto map_id_regex = std::regex(R"(/api/v1/maps/(.+))");
-        std::smatch match_results;
-        std::string target_name(url_decoded.begin(), url_decoded.end());
-        if (!regex_match(target_name, match_results, map_id_regex)) {
-            return MakeErrorResponse(ResponseErrorType::InvalidMap, req);
-        }
-        auto map = game_.FindMap(model::Map::Id{match_results[1]});
-        if (!map) {
-            return MakeErrorResponse(ResponseErrorType::MapNotFound, req);
-        }
-
-        return MakeStringResponse(http::status::ok, json::serialize(MapToJson(map)), req);
+        // /api/v1/maps/{map_id}
+        return HandleMapRequest(req);
     }
 
     template <typename Body, typename Allocator>
-    RequestResponse HandleGameJoinRequest(http::request<Body, http::basic_fields<Allocator>>& req) {
+    StringResponse HandleGameJoinRequest(http::request<Body, http::basic_fields<Allocator>>& req) {
         if (req.method() != http::verb::post) {
             return MakeErrorResponse(ResponseErrorType::InvalidMethod, req, ApiRequestType::GameJoin);
         }
 
-        std::string user_name;
-        model::Map::Id map_id{""};
+        std::string user_name, map_id;
         try {
-            auto req_data = json::parse(req.body()).as_object();
-            user_name = req_data.at("userName"sv).as_string().c_str();
-            *map_id =  req_data.at("mapId"sv).as_string().c_str();
+            auto params = json::parse(req.body());
+            user_name = params.as_object().at("userName"sv).as_string().c_str();
+            map_id =  params.as_object().at("mapId"sv).as_string().c_str();
         } catch (...) { 
             return MakeErrorResponse(ResponseErrorType::InvalidJSON, req, ApiRequestType::GameJoin);
         }
 
-        if (user_name.empty()) {
-            return MakeErrorResponse(ResponseErrorType::EmptyPlayerName, req, ApiRequestType::GameJoin);
+        json::value join_game_result;
+        try {
+            join_game_result = app_.JoinGame(user_name, map_id);
+        } catch (const AppErrorException& e) { 
+            return MakeErrorResponse(e.GetCategory(), req, ApiRequestType::GameJoin);
         }
-        auto map = game_.FindMap(map_id);
-        if (!map) {
-            return MakeErrorResponse(ResponseErrorType::InvalidMapId, req, ApiRequestType::GameJoin);
-        }
-        
-        auto game_session = game_.FindSession(map);
-        if (!game_session) {
-            game_session = game_.CreateSession(map);
-        }
-        auto dog = game_session->CreateDog(user_name, randomize_spawn_points_);
-        auto player_info = players_.Add(dog, game_session);
-
-        return MakeStringResponse(http::status::ok, 
-                                  json::serialize(json::object{
-                                     {"authToken"sv, player_info.token}, 
-                                     {"playerId"sv, player_info.player->GetId()}
-                                  }), 
-                                  req);
+        return MakeStringResponse(http::status::ok, json::serialize(join_game_result), req);
     }
 
     template <typename Body, typename Allocator>
-    RequestResponse HandlePlayersRequest(http::request<Body, http::basic_fields<Allocator>>& req) {
+    StringResponse HandlePlayersRequest(http::request<Body, http::basic_fields<Allocator>>& req) {
         if (req.method() != http::verb::get && req.method() != http::verb::head) {
             return MakeErrorResponse(ResponseErrorType::InvalidMethod, req, ApiRequestType::Players);
         }
 
-        return ExecuteAuthorized(req, [&req, this](const players::Players::Token& token){
-            auto player = players_.FindByToken(token);
-            if (!player) {
-                return MakeErrorResponse(ResponseErrorType::NoPlayerWithToken, req, ApiRequestType::Players);
+        return ExecuteAuthorized(req, [&req, this](const auto& token) {
+            json::value players_state;
+            try {
+                players_state = app_.GetPlayers(token);
+            } catch (const AppErrorException& e) { 
+                return MakeErrorResponse(e.GetCategory(), req, ApiRequestType::Players);
             }
-            json::object players_by_id;
-            for (auto dog : player->GetSession()->GetDogs()) {
-                players_by_id[std::to_string(dog->GetId())] = json::object{{"name"sv, dog->GetName()}};
-            }
-
-            return MakeStringResponse(http::status::ok, json::serialize(players_by_id), req);
+            return MakeStringResponse(http::status::ok, json::serialize(players_state), req);
         }, ApiRequestType::Players);
     }
 
     template <typename Body, typename Allocator>
-    RequestResponse HandleGameStateRequest(http::request<Body, http::basic_fields<Allocator>>& req) {
+    StringResponse HandleGameStateRequest(http::request<Body, http::basic_fields<Allocator>>& req) {
         if (req.method() != http::verb::get && req.method() != http::verb::head) {
             return MakeErrorResponse(ResponseErrorType::InvalidMethod, req, ApiRequestType::GameState);
         }
         
-        return ExecuteAuthorized(req, [&req, this](const players::Players::Token& token){
-            auto player = players_.FindByToken(token);
-            if (!player) {
-                return MakeErrorResponse(ResponseErrorType::NoPlayerWithToken, req, ApiRequestType::GameState);
+        return ExecuteAuthorized(req, [&req, this](const auto& token) {
+            json::value game_state;
+            try {
+                game_state = app_.GetGameState(token);
+            } catch (const AppErrorException& e) { 
+                return MakeErrorResponse(e.GetCategory(), req, ApiRequestType::GameState);
             }
-            json::object players_by_id;
-            for (auto dog : player->GetSession()->GetDogs()) {
-                players_by_id[std::to_string(dog->GetId())] = json::object{
-                    {"pos"sv, json::array{dog->GetPosition().x, dog->GetPosition().y}},
-                    {"speed"sv, json::array{dog->GetSpeed().x, dog->GetSpeed().y}},
-                    {"dir"sv, model::Dog::DirectionToString(dog->GetDirection())}
-                };
-            }
-
-            return MakeStringResponse(http::status::ok, json::serialize(json::object{{"players"sv, players_by_id}}), req);
+            return MakeStringResponse(http::status::ok, json::serialize(game_state), req);
         }, ApiRequestType::GameState);
     }
 
     template <typename Body, typename Allocator>
-    RequestResponse HandleActionRequest(http::request<Body, http::basic_fields<Allocator>>& req) {
+    StringResponse HandleActionRequest(http::request<Body, http::basic_fields<Allocator>>& req) {
         if (req.method() != http::verb::post) {
             return MakeErrorResponse(ResponseErrorType::InvalidMethod, req, ApiRequestType::Action);
         }
@@ -281,47 +240,79 @@ private:
         }
         
         return ExecuteAuthorized(req, [&req, this](const players::Players::Token& token) {
-            std::optional<model::Dog::Direction> direction;
+            std::string direction_str;
             try {
                 auto req_data = json::parse(req.body()).as_object();
-                direction.emplace(model::Dog::DirectionFromString(req_data.at("move"sv).as_string().c_str()));
+                direction_str = req_data.at("move"sv).as_string().c_str();
             } catch (...) { 
                 return MakeErrorResponse(ResponseErrorType::InvalidJSON, req, ApiRequestType::Action);
             }
 
-            auto player = players_.FindByToken(token);
-            if (!player) {
-                return MakeErrorResponse(ResponseErrorType::NoPlayerWithToken, req, ApiRequestType::Action);
+            try {
+                app_.ActionPlayer(token, direction_str);
+            } catch (const AppErrorException& e) { 
+                return MakeErrorResponse(e.GetCategory(), req, ApiRequestType::Action);
             }
-            player->ChangeDirection(direction);
-
             return MakeStringResponse(http::status::ok, json::serialize(json::object{}), req);
         }, ApiRequestType::Action);
     }
 
     template <typename Body, typename Allocator>
-    RequestResponse HandleTickRequest(http::request<Body, http::basic_fields<Allocator>>& req) {
+    StringResponse HandleTickRequest(http::request<Body, http::basic_fields<Allocator>>& req) {
         if (req.method() != http::verb::post) {
             return MakeErrorResponse(ResponseErrorType::InvalidMethod, req, ApiRequestType::Tick);
         }
-        if (ignore_tick_requests_) {
+        if (app_.GetAutoTick()) {
             return MakeErrorResponse(ResponseErrorType::BadRequest, req, ApiRequestType::Tick);
         }
         
-        int time_delta{0};
+        std::chrono::milliseconds time_delta{0ms};
         try {
             auto req_data = json::parse(req.body()).as_object();
-            time_delta = req_data.at("timeDelta"sv).as_int64();
-            if (time_delta < 0) {
-                throw std::invalid_argument("Whrong time"s);
-            }
+            time_delta = std::chrono::milliseconds(req_data.at("timeDelta"sv).as_int64());
         } catch (...) { 
             return MakeErrorResponse(ResponseErrorType::InvalidJSON, req, ApiRequestType::Tick);
         }
 
-        players_.MoveAllPlayers(std::chrono::milliseconds(time_delta));
-
+        try {
+            app_.Tick(time_delta);
+        } catch (const AppErrorException& e) { 
+            return MakeErrorResponse(e.GetCategory(), req, ApiRequestType::Tick);
+        }
         return MakeStringResponse(http::status::ok, json::serialize(json::object{}), req);
+    }
+
+    template <typename Body, typename Allocator>
+    StringResponse HandleMapsRequest(http::request<Body, http::basic_fields<Allocator>>& req) {
+        if (req.method() != http::verb::get && req.method() != http::verb::head) {
+            return MakeErrorResponse(ResponseErrorType::BadRequest, req, ApiRequestType::Maps);
+        }
+        return MakeStringResponse(http::status::ok, json::serialize(app_.GetMapsShortInfo()), req);
+    }
+
+    template <typename Body, typename Allocator>
+    StringResponse HandleMapRequest(http::request<Body, http::basic_fields<Allocator>>& req) {
+        if (req.method() != http::verb::get && req.method() != http::verb::head) {
+            return MakeErrorResponse(ResponseErrorType::BadRequest, req, ApiRequestType::Map);
+        }
+        
+        urls::decode_view url_decoded(req.target());
+
+        static const auto map_id_regex = std::regex(R"(/api/v1/maps/(.+))");
+        std::smatch match_results;
+        std::string target_name(url_decoded.begin(), url_decoded.end());
+        if (!regex_match(target_name, match_results, map_id_regex)) {
+            return MakeErrorResponse(ResponseErrorType::InvalidMapId, req, ApiRequestType::Map);
+        }
+        
+        json::value map_info;
+        try {
+            map_info = app_.GetMapInfo(match_results[1]);
+        } catch (const AppErrorException& e) { 
+            return MakeErrorResponse(ResponseErrorType::MapNotFound, req, ApiRequestType::Map);
+        }
+
+        return MakeStringResponse(http::status::ok, json::serialize(map_info), req);
     }
 
     template <typename Body, typename Allocator>
@@ -350,17 +341,6 @@ private:
 
         return MakeFileResponse(http::status::ok, std::move(file), req, content_type);
     }
-
-public:
-    void Tick(std::chrono::milliseconds time_delta) {
-        players_.MoveAllPlayers(time_delta);
-    }
-    void SetRandomizeSpawnPoints(bool randomize_spawn_points) {
-        randomize_spawn_points_ = randomize_spawn_points;
-    }
-    void SetIgnoreTickRequests(bool ignore_tick_requests) {
-        ignore_tick_requests_ = ignore_tick_requests;
-    }    
 
 private:
     struct ContentType {
@@ -404,14 +384,16 @@ private:
     }
 
     template <typename Fn, typename Body, typename Allocator>
-    static StringResponse ExecuteAuthorized(http::request<Body, http::basic_fields<Allocator>>& req, Fn&& action, ApiRequestType request_type) {
+    static StringResponse ExecuteAuthorized(http::request<Body, http::basic_fields<Allocator>>& req, 
+                                            Fn&& action, 
+                                            ApiRequestType request_type) {
         if (auto token = TryExtractToken(std::string(req[http::field::authorization]))) {
             return action(*token);
         } else {
             return MakeErrorResponse(ResponseErrorType::InvalidAuthorization, req, request_type);
         }
     }
-
+    
     static std::optional<std::string> TryExtractToken(std::string&& auth_header) {
         static const auto token_regex = std::regex(R"(Bearer\s([0-9a-fA-F]{32}))");
         std::smatch match_results;
@@ -435,14 +417,14 @@ private:
     }
 
     template <typename Body, typename Allocator>
-    static StringResponse MakeErrorResponse(ResponseErrorType response_error_type,
+    static StringResponse MakeErrorResponse(ResponseErrorType error_type,
                                             http::request<Body, http::basic_fields<Allocator>>& req,
                                             ApiRequestType request_type = ApiRequestType::Any) {
         std::optional<StringResponse> result;
 
         switch (request_type) {
         case ApiRequestType::Players: {
-            switch (response_error_type) {
+            switch (error_type) {
                 case ResponseErrorType::InvalidMethod: {
                     result = MakeStringResponse<Body, Allocator>(http::status::method_not_allowed, 
                                                                  json::serialize(json::object{
@@ -475,7 +457,7 @@ private:
             break;
         }
         case ApiRequestType::GameState: {
-            switch (response_error_type) {
+            switch (error_type) {
                 case ResponseErrorType::InvalidMethod: {
                     result = MakeStringResponse<Body, Allocator>(http::status::method_not_allowed, 
                                                                 json::serialize(json::object{
@@ -508,7 +490,7 @@ private:
             break;
         }
         case ApiRequestType::GameJoin: {
-            switch (response_error_type) {
+            switch (error_type) {
                 case ResponseErrorType::InvalidMethod: {
                     result = MakeStringResponse<Body, Allocator>(http::status::method_not_allowed, 
                                                                 json::serialize(json::object{
@@ -550,7 +532,7 @@ private:
             break;
         }
         case ApiRequestType::Action: {
-            switch (response_error_type)
+            switch (error_type)
             {
                 case ResponseErrorType::InvalidMethod: {
                     result = MakeStringResponse<Body, Allocator>(http::status::method_not_allowed, 
@@ -602,7 +584,7 @@ private:
             break;
         }
         case ApiRequestType::Tick: {
-            switch (response_error_type)
+            switch (error_type)
             {
                 case ResponseErrorType::BadRequest: {
                     result = MakeStringResponse<Body, Allocator>(http::status::bad_request, 
@@ -635,30 +617,61 @@ private:
             }
             break;
         }
+        case ApiRequestType::Maps: {
+            switch (error_type) {
+                case ResponseErrorType::BadRequest: {
+                    result = MakeStringResponse<Body, Allocator>(http::status::bad_request, 
+                                                                json::serialize(json::object({
+                                                                    {"code", "badRequest"s},
+                                                                    {"message", "Bad request"s}
+                                                                })), 
+                                                                req,
+                                                                ContentType::APPLICATION_JSON,
+                                                                true);
+                    break;
+                }
+            }
+            break;
         }
-
+        case ApiRequestType::Map: {
+            switch (error_type) {
+                case ResponseErrorType::BadRequest:
+                case ResponseErrorType::InvalidMapId: {
+                    result = MakeStringResponse<Body, Allocator>(http::status::bad_request, 
+                                                                json::serialize(json::object({
+                                                                    {"code", "badRequest"s},
+                                                                    {"message", "Bad request"s}
+                                                                })), 
+                                                                req,
+                                                                ContentType::APPLICATION_JSON,
+                                                                true);
+                    break;
+                }
+                case ResponseErrorType::MapNotFound: {
+                    result = MakeStringResponse<Body, Allocator>(http::status::not_found, 
+                                                                json::serialize(json::object({
+                                                                    {"code", "mapNotFound"s},
+                                                                    {"message", "Map not found"s}
+                                                                })), 
+                                                                req,
+                                                                ContentType::APPLICATION_JSON,
+                                                                true);
+                    break;
+                }
+            }
+            break;
+        }
+        }
         if (result) {
             return *result;
         }        
 
-        switch (response_error_type) {
-            case ResponseErrorType::BadRequest:
-            case ResponseErrorType::InvalidMap: {
+        switch (error_type) {
+            case ResponseErrorType::BadRequest: {
                 result = MakeStringResponse<Body, Allocator>(http::status::bad_request, 
                                                              json::serialize(json::object({
                                                                 {"code", "badRequest"s},
                                                                 {"message", "Bad request"s}
-                                                             })), 
-                                                             req,
-                                                             ContentType::APPLICATION_JSON,
-                                                             true);
-                break;
-            }
-            case ResponseErrorType::MapNotFound: {
-                result = MakeStringResponse<Body, Allocator>(http::status::not_found, 
-                                                             json::serialize(json::object({
-                                                                {"code", "mapNotFound"s},
-                                                                {"message", "Map not found"s}
                                                              })), 
                                                              req,
                                                              ContentType::APPLICATION_JSON,
@@ -685,6 +698,22 @@ private:
         return *result;
     }
 
+    template <typename Body, typename Allocator>
+    static StringResponse MakeErrorResponse(AppErrorException::Category error_category,
+                                            http::request<Body, http::basic_fields<Allocator>>& req,
+                                            ApiRequestType request_type) {
+        using ErrCategory = AppErrorException::Category;
+        using ErrCategoryInfo = std::unordered_map<AppErrorException::Category, ResponseErrorType>;
+        static const ErrCategoryInfo err_category_to_err_type{
+            {ErrCategory::EmptyPlayerName, ResponseErrorType::EmptyPlayerName},
+            {ErrCategory::InvalidMapId, ResponseErrorType::InvalidMapId},
+            {ErrCategory::NoPlayerWithToken, ResponseErrorType::NoPlayerWithToken},
+            {ErrCategory::InvalidDirection, ResponseErrorType::InvalidJSON},
+            {ErrCategory::InvalidTime, ResponseErrorType::InvalidJSON}
+        };
+        return MakeErrorResponse(err_category_to_err_type.at(error_category), req, request_type);
+    }
+
     template <typename Send>
     void SendResponse(RequestResponse&& response, Send&& send) {
         if (holds_alternative<StringResponse>(response)) {
@@ -695,19 +724,11 @@ private:
     }
 
 private:
-    static json::array MapsToShortJson(const Game::Maps& maps);
-    static json::object MapToJson(const Map* map);
-    static json::object RoadToJson(const Road& road);
-    static json::object BuildingToJson(const Building& building);
-    static json::object OfficeToJson(const Office& office);
-
-private:
     static bool IsSubPath(fs::path path, fs::path base);
 
     template <typename Body, typename Allocator>
     static RequestType CheckRequestType(const http::request<Body, http::basic_fields<Allocator>> &req) {
         urls::decode_view url_decoded(req.target());
-
         if (url_decoded.starts_with("/api/"sv)) {
             return RequestType::Api;
         }        
@@ -717,12 +738,9 @@ private:
 private:
     fs::path static_data_path_;
     Strand api_strand_;
-    bool ignore_tick_requests_ = false;
 
 private:
-    model::Game& game_;
-    players::Players& players_;
-    bool randomize_spawn_points_ = false;
+    Application& app_;
 };
 
 }  // namespace http_handler

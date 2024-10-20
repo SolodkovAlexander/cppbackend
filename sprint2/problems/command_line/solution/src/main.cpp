@@ -7,7 +7,8 @@
 #include <iostream>
 #include <thread>
 
-#include "json_loader.h"
+#include "application.h"
+#include "json_parser.h"
 #include "json_logger.h"
 #include "model.h"
 #include "players.h"
@@ -84,11 +85,10 @@ int main(int argc, const char* argv[]) {
             std::filesystem::path config_file = args->config_file;
             std::string www_root = args->www_root;
 
-            // 1. Загружаем карту из файла и построить модель игры
-            model::Game game = json_loader::LoadGame(config_file);
-
-            // 1.1. Контроллер игроками
-            players::Players players;
+            // 1. Создаем приложение, управляющее игрой и действиями в игре
+            game_scenarios::Application app(json_parser::LoadGame(config_file),
+                                            args->randomize_spawn_points,
+                                            args->tick_period >= 0);
 
             // 2. Инициализируем io_context
             const unsigned num_threads = std::thread::hardware_concurrency();
@@ -105,13 +105,11 @@ int main(int argc, const char* argv[]) {
 
             // 4. Создаём обработчик HTTP-запросов и связываем его с моделью игры
             auto api_strand = net::make_strand(ioc);
-            auto handler = std::make_shared<http_handler::RequestHandler>(game, players, www_root, api_strand);
-            handler->SetRandomizeSpawnPoints(args->randomize_spawn_points);
-            handler->SetIgnoreTickRequests(args->tick_period >= 0);
+            auto handler = std::make_shared<http_handler::RequestHandler>(app, www_root, api_strand);
 
             // 5. Настраиваем вызов метода RequestHandler::Tick
             auto ticker = std::make_shared<http_handler::Ticker>(api_strand, std::chrono::milliseconds(args->tick_period),
-                [handler](std::chrono::milliseconds delta) { handler->Tick(delta); }
+                [&app](std::chrono::milliseconds delta) { app.Tick(delta); }
             );
             ticker->Start();
 

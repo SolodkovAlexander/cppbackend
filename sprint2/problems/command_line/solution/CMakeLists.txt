@@ -25,13 +25,14 @@ add_executable(game_server
 	src/model.cpp
 	src/tagged.h
 	src/boost_json.cpp
-	src/json_loader.h
-	src/json_loader.cpp
+	src/json_parser.h
+	src/json_parser.cpp
 	src/json_logger.h
 	src/json_logger.cpp
 	src/request_handler.cpp
 	src/request_handler.h
 	src/ticker.h
+	src/application.h
 )
 
 # используем "импортированную" цель CONAN_PKG::boost

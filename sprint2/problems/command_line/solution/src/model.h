@@ -203,8 +203,8 @@ private:
 public:
     using DogId = std::uint64_t;
 
-    Dog(std::string name, DogId id, PointD position = DEFAULT_POSITION, Speed speed = DEFAULT_SPEED) 
-        : name_(std::move(name))
+    Dog(const std::string& name, DogId id, PointD position = DEFAULT_POSITION, Speed speed = DEFAULT_SPEED) 
+        : name_(name)
         , id_(id)
         , position_(position)
         , speed_(speed)
