@@ -31,6 +31,7 @@ add_executable(game_server
 	src/json_logger.cpp
 	src/request_handler.cpp
 	src/request_handler.h
+	src/ticker.h
 )
 
 # используем "импортированную" цель CONAN_PKG::boost

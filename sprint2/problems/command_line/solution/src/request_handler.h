@@ -171,9 +171,7 @@ private:
             return MakeErrorResponse(ResponseErrorType::BadRequest, req);
         }
         if (url_decoded == "/api/v1/maps"sv) {
-            return MakeStringResponse(http::status::ok, 
-                                      json::serialize(MapsToShortJson(game_.GetMaps())), 
-                                      req);
+            return MakeStringResponse(http::status::ok, json::serialize(MapsToShortJson(game_.GetMaps())), req);
         }
 
         static const auto map_id_regex = std::regex(R"(/api/v1/maps/(.+))");
@@ -187,9 +185,7 @@ private:
             return MakeErrorResponse(ResponseErrorType::MapNotFound, req);
         }
 
-        return MakeStringResponse(http::status::ok, 
-                                  json::serialize(MapToJson(map)), 
-                                  req);
+        return MakeStringResponse(http::status::ok, json::serialize(MapToJson(map)), req);
     }
 
     template <typename Body, typename Allocator>
@@ -220,7 +216,7 @@ private:
         if (!game_session) {
             game_session = game_.CreateSession(map);
         }
-        auto dog = game_session->CreateDog(user_name);
+        auto dog = game_session->CreateDog(user_name, randomize_spawn_points_);
         auto player_info = players_.Add(dog, game_session);
 
         return MakeStringResponse(http::status::ok, 
@@ -247,9 +243,7 @@ private:
                 players_by_id[std::to_string(dog->GetId())] = json::object{{"name"sv, dog->GetName()}};
             }
 
-            return MakeStringResponse(http::status::ok, 
-                                    json::serialize(players_by_id), 
-                                    req);
+            return MakeStringResponse(http::status::ok, json::serialize(players_by_id), req);
         }, ApiRequestType::Players);
     }
 
@@ -273,9 +267,7 @@ private:
                 };
             }
 
-            return MakeStringResponse(http::status::ok, 
-                                      json::serialize(json::object{{"players"sv, players_by_id}}), 
-                                      req);
+            return MakeStringResponse(http::status::ok, json::serialize(json::object{{"players"sv, players_by_id}}), req);
         }, ApiRequestType::GameState);
     }
 
@@ -303,9 +295,7 @@ private:
             }
             player->ChangeDirection(direction);
 
-            return MakeStringResponse(http::status::ok, 
-                                      json::serialize(json::object{}), 
-                                      req);
+            return MakeStringResponse(http::status::ok, json::serialize(json::object{}), req);
         }, ApiRequestType::Action);
     }
 
@@ -313,6 +303,9 @@ private:
     RequestResponse HandleTickRequest(http::request<Body, http::basic_fields<Allocator>>& req) {
         if (req.method() != http::verb::post) {
             return MakeErrorResponse(ResponseErrorType::InvalidMethod, req, ApiRequestType::Tick);
+        }
+        if (ignore_tick_requests_) {
+            return MakeErrorResponse(ResponseErrorType::BadRequest, req, ApiRequestType::Tick);
         }
         
         int time_delta{0};
@@ -326,11 +319,9 @@ private:
             return MakeErrorResponse(ResponseErrorType::InvalidJSON, req, ApiRequestType::Tick);
         }
 
-        players_.MoveAllPlayers(time_delta);
+        players_.MoveAllPlayers(std::chrono::milliseconds(time_delta));
 
-        return MakeStringResponse(http::status::ok, 
-                                    json::serialize(json::object{}), 
-                                    req);
+        return MakeStringResponse(http::status::ok, json::serialize(json::object{}), req);
     }
 
     template <typename Body, typename Allocator>
@@ -359,6 +350,17 @@ private:
 
         return MakeFileResponse(http::status::ok, std::move(file), req, content_type);
     }
+
+public:
+    void Tick(std::chrono::milliseconds time_delta) {
+        players_.MoveAllPlayers(time_delta);
+    }
+    void SetRandomizeSpawnPoints(bool randomize_spawn_points) {
+        randomize_spawn_points_ = randomize_spawn_points;
+    }
+    void SetIgnoreTickRequests(bool ignore_tick_requests) {
+        ignore_tick_requests_ = ignore_tick_requests;
+    }    
 
 private:
     struct ContentType {
@@ -393,8 +395,6 @@ private:
         response.body() = body;
         response.content_length(body.size());
         response.keep_alive(request.keep_alive());
-
-        // Headers
         response.set(http::field::content_type, content_type);
         if (!with_cache) {
             response.set(http::field::cache_control, "no-cache"sv);
@@ -438,36 +438,37 @@ private:
     static StringResponse MakeErrorResponse(ResponseErrorType response_error_type,
                                             http::request<Body, http::basic_fields<Allocator>>& req,
                                             ApiRequestType request_type = ApiRequestType::Any) {
-        StringResponse result;
+        std::optional<StringResponse> result;
+
         switch (request_type) {
         case ApiRequestType::Players: {
             switch (response_error_type) {
                 case ResponseErrorType::InvalidMethod: {
                     result = MakeStringResponse<Body, Allocator>(http::status::method_not_allowed, 
-                                                                    json::serialize(json::object{
-                                                                        {"code"sv, "invalidMethod"sv}, 
-                                                                        {"message"sv, "Invalid method"sv}
-                                                                    }), 
-                                                                    req);
-                    result.set(http::field::allow, "GET, HEAD"sv);
+                                                                 json::serialize(json::object{
+                                                                     {"code"sv, "invalidMethod"sv}, 
+                                                                     {"message"sv, "Invalid method"sv}
+                                                                 }), 
+                                                                 req);
+                    (*result).set(http::field::allow, "GET, HEAD"sv);
                     break;
                 }
                 case ResponseErrorType::InvalidAuthorization: {
                     result = MakeStringResponse<Body, Allocator>(http::status::unauthorized, 
-                                                                    json::serialize(json::object{
-                                                                        {"code"sv, "invalidToken"sv}, 
-                                                                        {"message"sv, "Authorization header is missing"sv}
-                                                                    }), 
-                                                                    req);
+                                                                 json::serialize(json::object{
+                                                                     {"code"sv, "invalidToken"sv}, 
+                                                                     {"message"sv, "Authorization header is missing"sv}
+                                                                 }), 
+                                                                 req);
                     break;
                 }
                 case ResponseErrorType::NoPlayerWithToken: {
                     result = MakeStringResponse<Body, Allocator>(http::status::unauthorized, 
-                                                                    json::serialize(json::object{
-                                                                        {"code"sv, "unknownToken"sv}, 
-                                                                        {"message"sv, "Player token has not been found"sv}
-                                                                    }), 
-                                                                    req);
+                                                                 json::serialize(json::object{
+                                                                     {"code"sv, "unknownToken"sv}, 
+                                                                     {"message"sv, "Player token has not been found"sv}
+                                                                 }), 
+                                                                 req);
                     break;
                 }
             }
@@ -482,7 +483,7 @@ private:
                                                                     {"message"sv, "Invalid method"sv}
                                                                 }), 
                                                                 req);
-                    result.set(http::field::allow, "GET, HEAD"sv);
+                    (*result).set(http::field::allow, "GET, HEAD"sv);
                     break;
                 }
                 case ResponseErrorType::InvalidAuthorization: {
@@ -515,7 +516,7 @@ private:
                                                                     {"message"sv, "Only POST method is expected"sv}
                                                                 }), 
                                                                 req);
-                    result.set(http::field::allow, "POST"sv);
+                    (*result).set(http::field::allow, "POST"sv);
                     break;
                 }
                 case ResponseErrorType::EmptyPlayerName: {
@@ -558,7 +559,7 @@ private:
                                                                     {"message"sv, "Invalid method"sv}
                                                                 }), 
                                                                 req);
-                    result.set(http::field::allow, "POST"sv);
+                    (*result).set(http::field::allow, "POST"sv);
                     break;
                 }
                 case ResponseErrorType::InvalidContentType: {
@@ -603,6 +604,15 @@ private:
         case ApiRequestType::Tick: {
             switch (response_error_type)
             {
+                case ResponseErrorType::BadRequest: {
+                    result = MakeStringResponse<Body, Allocator>(http::status::bad_request, 
+                                                                json::serialize(json::object{
+                                                                    {"code"sv, "invalidArgument"sv}, 
+                                                                    {"message"sv, "Invalid endpoint"sv}
+                                                                }), 
+                                                                req);
+                    break;
+                }
                 case ResponseErrorType::InvalidMethod: {
                     result = MakeStringResponse<Body, Allocator>(http::status::method_not_allowed, 
                                                                 json::serialize(json::object{
@@ -610,7 +620,7 @@ private:
                                                                     {"message"sv, "Invalid method"sv}
                                                                 }), 
                                                                 req);
-                    result.set(http::field::allow, "POST"sv);
+                    (*result).set(http::field::allow, "POST"sv);
                     break;
                 }
                 case ResponseErrorType::InvalidJSON: {
@@ -626,6 +636,10 @@ private:
             break;
         }
         }
+
+        if (result) {
+            return *result;
+        }        
 
         switch (response_error_type) {
             case ResponseErrorType::BadRequest:
@@ -668,7 +682,7 @@ private:
                 break;
             }
         }
-        return result;
+        return *result;
     }
 
     template <typename Send>
@@ -701,10 +715,14 @@ private:
     }
 
 private:
-    model::Game& game_;
-    players::Players& players_;
     fs::path static_data_path_;
     Strand api_strand_;
+    bool ignore_tick_requests_ = false;
+
+private:
+    model::Game& game_;
+    players::Players& players_;
+    bool randomize_spawn_points_ = false;
 };
 
 }  // namespace http_handler

@@ -3,6 +3,7 @@
 #include <boost/asio/io_context.hpp>
 #include <boost/asio/signal_set.hpp>
 #include <boost/core/detail/string_view.hpp>
+#include <boost/program_options.hpp>
 #include <iostream>
 #include <thread>
 
@@ -11,6 +12,7 @@
 #include "model.h"
 #include "players.h"
 #include "request_handler.h"
+#include "ticker.h"
 
 using namespace std::literals;
 namespace net = boost::asio;
@@ -33,65 +35,106 @@ void RunWorkers(unsigned n, const Fn& fn) {
 
 }  // namespace
 
+struct Args {
+    int tick_period;
+    std::string config_file;
+    std::string www_root;
+    bool randomize_spawn_points;
+}; 
+
+[[nodiscard]] std::optional<Args> ParseCommandLine(int argc, const char* const argv[]) {
+    namespace po = boost::program_options;
+
+    po::options_description desc{"Allowed options"s};
+
+    Args args;
+    desc.add_options()
+        ("help,h", "produce help message")
+        ("tick-period,t", po::value(&args.tick_period)->value_name("milliseconds"), "set tick period")
+        ("config-file,c", po::value(&args.config_file)->value_name("file"), "set config file path")
+        ("www-root,w", po::value(&args.www_root)->value_name("dir"), "set static files root")
+        ("randomize-spawn-points", "spawn dogs at random positions ");
+
+    po::variables_map vm;
+    po::store(po::parse_command_line(argc, argv, desc), vm);
+    po::notify(vm);
+
+    if (vm.contains("help"s)) {
+        std::cout << desc;
+        return std::nullopt;
+    }
+    if (!vm.contains("config-file"s)) {
+        throw std::runtime_error("Config file path have not been specified"s);
+    }
+    if (!vm.contains("www-root"s)) {
+        throw std::runtime_error("Static files root dir have not specified"s);
+    }
+    if (!vm.contains("tick-period"s)) {
+        args.tick_period = -1;
+    }
+    args.randomize_spawn_points = vm.contains("randomize-spawn-points"s);
+
+    return args;
+} 
+
 int main(int argc, const char* argv[]) {
-    if (argc != 3) {
-        std::cerr << "Usage: game_server <game-config-json> <static-data-dir>"sv << std::endl;
-        return EXIT_FAILURE;
-    }
-
     json_logger::InitLogger();
-
     try {
-        std::filesystem::path game_config_file_path = argv[1];
-        std::string static_data_dir_path = argv[2];
+        if (auto args = ParseCommandLine(argc, argv)) {
+            std::filesystem::path config_file = args->config_file;
+            std::string www_root = args->www_root;
 
-        // 1. Загружаем карту из файла и построить модель игры
-        model::Game game = json_loader::LoadGame(game_config_file_path);
+            // 1. Загружаем карту из файла и построить модель игры
+            model::Game game = json_loader::LoadGame(config_file);
 
-        // 1.1. Контроллер игроками
-        players::Players players;
+            // 1.1. Контроллер игроками
+            players::Players players;
 
-        // 2. Инициализируем io_context
-        const unsigned num_threads = std::thread::hardware_concurrency();
-        net::io_context ioc(num_threads);
+            // 2. Инициализируем io_context
+            const unsigned num_threads = std::thread::hardware_concurrency();
+            net::io_context ioc(num_threads);
 
-        // 3. Добавляем асинхронный обработчик сигналов SIGINT и SIGTERM
-        // Подписываемся на сигналы и при их получении завершаем работу сервера
-        net::signal_set signals(ioc, SIGINT, SIGTERM);
-        signals.async_wait([&ioc](const sys::error_code& ec, [[maybe_unused]] int signal_number) {
-            if (!ec) {
-                ioc.stop();
-            }
-        });
+            // 3. Добавляем асинхронный обработчик сигналов SIGINT и SIGTERM
+            // Подписываемся на сигналы и при их получении завершаем работу сервера
+            net::signal_set signals(ioc, SIGINT, SIGTERM);
+            signals.async_wait([&ioc](const sys::error_code& ec, [[maybe_unused]] int signal_number) {
+                if (!ec) {
+                    ioc.stop();
+                }
+            });
 
-        // 4. Создаём обработчик HTTP-запросов и связываем его с моделью игры
-        auto api_strand = net::make_strand(ioc);
-        auto handler = std::make_shared<http_handler::RequestHandler>(game, players, static_data_dir_path, api_strand);
+            // 4. Создаём обработчик HTTP-запросов и связываем его с моделью игры
+            auto api_strand = net::make_strand(ioc);
+            auto handler = std::make_shared<http_handler::RequestHandler>(game, players, www_root, api_strand);
+            handler->SetRandomizeSpawnPoints(args->randomize_spawn_points);
+            handler->SetIgnoreTickRequests(args->tick_period >= 0);
 
-        // 5. Запустить обработчик HTTP-запросов, делегируя их обработчику запросов
-        const auto address = net::ip::make_address("0.0.0.0");
-        constexpr unsigned short port = 8080;
-        http_server::ServeHttp(ioc, {address, port}, [handler](auto&& req, auto&& send) {
-            (*handler)(std::forward<decltype(req)>(req), 
-                       std::forward<decltype(send)>(send));
-        });        
+            // 5. Настраиваем вызов метода RequestHandler::Tick
+            auto ticker = std::make_shared<http_handler::Ticker>(api_strand, std::chrono::milliseconds(args->tick_period),
+                [handler](std::chrono::milliseconds delta) { handler->Tick(delta); }
+            );
+            ticker->Start();
 
-        // Эта надпись сообщает тестам о том, что сервер запущен и готов обрабатывать запросы
-        json_logger::LogData("server started"sv,
-                             boost::json::object{{"port", port}, {"address", address.to_string()}});
+            // 6. Запустить обработчик HTTP-запросов, делегируя их обработчику запросов
+            const auto address = net::ip::make_address("0.0.0.0");
+            constexpr unsigned short port = 8080;
+            http_server::ServeHttp(ioc, {address, port}, [handler](auto&& req, auto&& send) {
+                (*handler)(std::forward<decltype(req)>(req), 
+                        std::forward<decltype(send)>(send));
+            });        
 
-        // 6. Запускаем обработку асинхронных операций
-        RunWorkers(std::max(1u, num_threads), [&ioc] {
-            ioc.run();
-        });
+            // Эта надпись сообщает тестам о том, что сервер запущен и готов обрабатывать запросы
+            json_logger::LogData("server started"sv, boost::json::object{{"port", port}, {"address", address.to_string()}});
 
-        json_logger::LogData("server exited"sv,
-                             boost::json::object{{"code", 0}});
+            // 7. Запускаем обработку асинхронных операций
+            RunWorkers(std::max(1u, num_threads), [&ioc] {
+                ioc.run();
+            });
+
+            json_logger::LogData("server exited"sv, boost::json::object{{"code", 0}});
+        }
     } catch (const std::exception& ex) {
-        json_logger::LogData("server exited"sv,
-                             boost::json::object{{"code", EXIT_FAILURE}, {"exception", ex.what()}});
+        json_logger::LogData("server exited"sv, boost::json::object{{"code", EXIT_FAILURE}, {"exception", ex.what()}});
         return EXIT_FAILURE;
     }
-    
-    
 }

@@ -44,16 +44,16 @@ public:
         dog_->SetSpeed(dog_speed);
     }
 
-    void Move(int time_ms) {
+    void Move(std::chrono::milliseconds time_delta) {
         auto speed = dog_->GetSpeed();
         if (speed.x == 0.0 && speed.y == 0.0) {
             return;
         }
 
-        auto time_s_d = model::DimensionD(time_ms) * 0.001;
+        auto time_delta_d = std::chrono::duration<model::DimensionD>(time_delta).count();
         auto current_pos = dog_->GetPosition();
-        auto next_pos = model::PointD{current_pos.x + (speed.x * time_s_d), current_pos.y + (speed.y * time_s_d)};
-
+        auto next_pos = model::PointD{current_pos.x + (speed.x * time_delta_d), 
+                                      current_pos.y + (speed.y * time_delta_d)};
         const auto& roads = session_->GetMap()->GetRoads();
         
         // Есть ли дорога, которая содержит получившеюся позицию
@@ -173,9 +173,9 @@ public:
         return player_by_token_[token];
     }
 
-    void MoveAllPlayers(int time_ms) {
+    void MoveAllPlayers(std::chrono::milliseconds time_delta) {
         for (const auto& player : players_) {
-            player->Move(time_ms);
+            player->Move(time_delta);
         }
     }
 

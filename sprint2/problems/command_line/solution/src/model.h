@@ -280,15 +280,18 @@ public:
     GameSession& operator=(const GameSession&) = delete;
 
 public:
-    Dog* CreateDog(const std::string& name) {
+    Dog* CreateDog(const std::string& name, bool randomize_spawn_point = false) {
         auto dog = dogs_.emplace_back(std::make_unique<Dog>(name, 
                                                             dogs_.size(), 
-                                                            GenerateNewDogPosition())).get();
+                                                            GenerateNewDogPosition(randomize_spawn_point))).get();
         dog_id_to_dog_[dog->GetId()] = dog;
         return dog;
     }
-    PointD GenerateNewDogPosition() const noexcept {
-        return PointD{CoordD(map_->GetRoads().at(0).GetStart().x), CoordD(map_->GetRoads().at(0).GetStart().y)};
+    PointD GenerateNewDogPosition(bool randomize_spawn_point = false) const noexcept {
+        if (randomize_spawn_point) {
+            return PointD{CoordD(map_->GetRoads().at(0).GetStart().x), 
+                          CoordD(map_->GetRoads().at(0).GetStart().y)};
+        }
 
         std::random_device rand_device; 
         std::mt19937_64 rand_engine(rand_device());
