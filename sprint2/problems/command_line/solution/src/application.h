@@ -145,14 +145,11 @@ public:
     }
 
 public:
-    void Tick(std::chrono::milliseconds time_delta) {
-        if (!auto_tick_enabled_) {
-            return;
-        }
-        if (time_delta < 0ms) {
+    void Tick(std::chrono::milliseconds delta) {
+        if (delta < 0ms) {
             throw AppErrorException("Whrong time"s, AppErrorException::Category::InvalidTime);
         }
-        players_.MoveAllPlayers(time_delta);
+        players_.MoveAllPlayers(delta);
     }
 
 private:

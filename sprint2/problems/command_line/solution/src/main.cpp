@@ -109,7 +109,11 @@ int main(int argc, const char* argv[]) {
 
             // 5. Настраиваем вызов метода RequestHandler::Tick
             auto ticker = std::make_shared<http_handler::Ticker>(api_strand, std::chrono::milliseconds(args->tick_period),
-                [&app](std::chrono::milliseconds delta) { app.Tick(delta); }
+                [&app](std::chrono::milliseconds delta) { 
+                    if (app.GetAutoTick()) {
+                        app.Tick(delta);
+                    }                    
+                }
             );
             ticker->Start();
 

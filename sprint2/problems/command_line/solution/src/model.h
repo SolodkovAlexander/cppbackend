@@ -288,7 +288,7 @@ public:
         return dog;
     }
     PointD GenerateNewDogPosition(bool randomize_spawn_point = false) const noexcept {
-        if (randomize_spawn_point) {
+        if (!randomize_spawn_point) {
             return PointD{CoordD(map_->GetRoads().at(0).GetStart().x), 
                           CoordD(map_->GetRoads().at(0).GetStart().y)};
         }
