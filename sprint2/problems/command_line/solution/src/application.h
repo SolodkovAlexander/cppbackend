@@ -56,11 +56,11 @@ public:
     }
 
 public:
-    json::value GetMapsShortInfo() {
+    json::value GetMapsShortInfo() const noexcept {
         return json_parser::MapsToShortJson(game_.GetMaps());
     }
 
-    json::value GetMapInfo(const std::string& map_id) {
+    json::value GetMapInfo(const std::string& map_id) const {
         auto map = game_.FindMap(model::Map::Id{map_id});
         if (!map) {
             throw AppErrorException("Map not found"s, AppErrorException::Category::InvalidMapId);
@@ -115,7 +115,7 @@ public:
             players_by_id[std::to_string(dog->GetId())] = json::object{
                 {"pos"sv, json::array{dog->GetPosition().x, dog->GetPosition().y}},
                 {"speed"sv, json::array{dog->GetSpeed().x, dog->GetSpeed().y}},
-                {"dir"sv, model::Dog::DirectionToString(dog->GetDirection())}
+                {"dir"sv, DirectionToString(dog->GetDirection())}
             };
         }
 
@@ -123,11 +123,11 @@ public:
     }
 
     void ActionPlayer(const Players::Token& player_token, const std::string& direction_str) {
-        std::optional<Dog::Direction> direction;
+        std::optional<Direction> direction;
         if (!direction_str.empty()) {
              try {
-                direction = model::Dog::DirectionFromString(direction_str);
-            } catch (...) { 
+                direction = DirectionFromString(direction_str);
+            } catch (const DirectionConvertException& e) { 
                 throw AppErrorException("Failed to parse direction"s, AppErrorException::Category::InvalidDirection);
             }
         }

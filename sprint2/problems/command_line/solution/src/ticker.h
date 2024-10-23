@@ -1,3 +1,4 @@
+#pragma once
 
 #include <boost/asio/strand.hpp>
 #include <boost/beast.hpp>

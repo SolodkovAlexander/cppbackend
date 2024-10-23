@@ -27,6 +27,7 @@ using namespace game_scenarios;
 using StringResponse = http::response<http::string_body>;
 using FileResponse = http::response<http::file_body>;
 using RequestResponse = std::variant<StringResponse,FileResponse>;
+using ParseJSONParamsException = sys::system_error;
 
 class MakingResponseDurationLogger {
 public:
@@ -44,12 +45,15 @@ private:
         int code = 0;
         std::string content_type = "null"s;
         if (holds_alternative<StringResponse>(response_)) {
-            auto resp = get<StringResponse>(response_);
-            code = resp.result_int();
-            try { content_type = resp.at(http::field::content_type); } catch (...) {}
+            code = get<StringResponse>(response_).result_int();
+            try { 
+                content_type = get<StringResponse>(response_).at(http::field::content_type); 
+            } catch (const std::out_of_range& e) {}
         } else if (holds_alternative<FileResponse>(response_)) {
             code = get<FileResponse>(response_).result_int();
-            try { content_type = get<FileResponse>(response_).at(http::field::content_type); } catch (...) {}
+            try { 
+                content_type = get<FileResponse>(response_).at(http::field::content_type); 
+            } catch (const std::out_of_range& e) {}
         }
         
         json_logger::LogData("response sent"sv,
@@ -183,7 +187,7 @@ private:
             auto params = json::parse(req.body());
             user_name = params.as_object().at("userName"sv).as_string().c_str();
             map_id =  params.as_object().at("mapId"sv).as_string().c_str();
-        } catch (...) { 
+        } catch (const ParseJSONParamsException& e) { 
             return MakeErrorResponse(ResponseErrorType::InvalidJSON, req, ApiRequestType::GameJoin);
         }
 
@@ -244,7 +248,7 @@ private:
             try {
                 auto req_data = json::parse(req.body()).as_object();
                 direction_str = req_data.at("move"sv).as_string().c_str();
-            } catch (...) { 
+            } catch (const ParseJSONParamsException& e) { 
                 return MakeErrorResponse(ResponseErrorType::InvalidJSON, req, ApiRequestType::Action);
             }
 
@@ -270,7 +274,7 @@ private:
         try {
             auto req_data = json::parse(req.body()).as_object();
             time_delta = std::chrono::milliseconds(req_data.at("timeDelta"sv).as_int64());
-        } catch (...) { 
+        } catch (const ParseJSONParamsException& e) { 
             return MakeErrorResponse(ResponseErrorType::InvalidJSON, req, ApiRequestType::Tick);
         }
 

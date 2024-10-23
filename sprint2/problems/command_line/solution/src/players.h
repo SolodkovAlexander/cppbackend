@@ -11,35 +11,36 @@
 #include <vector>
 
 namespace players {
+using namespace model;
 
 class Player {
 public:
-    Player(model::Dog* dog, model::GameSession* session) :
+    Player(Dog* dog, GameSession* session) :
         dog_(dog),
         session_(session)
      {}
 
 public:
-    model::Dog::DogId GetId() const {
+    Dog::DogId GetId() const {
         return dog_->GetId();
     }
-    model::GameSession* GetSession() const {
+    GameSession* GetSession() const {
         return session_;
     }
 
-    void SetSpeed(model::Dog::Speed speed) {
+    void SetSpeed(Dog::Speed speed) {
         dog_->SetSpeed(speed);
     }
 
-    void ChangeDirection(model::Dog::Direction direction) {
-        model::DimensionD speed_value(session_->GetMap()->GetDefaultSpeed());
-        model::Dog::Speed speed{0.0, 0.0};
+    void ChangeDirection(Direction direction) {
+        DimensionD speed_value(session_->GetMap()->GetDefaultSpeed());
+        Dog::Speed speed{0.0, 0.0};
         switch (direction)
         {
-            case model::Dog::Direction::NORTH: speed = model::Dog::Speed{0.0, -speed_value}; break;
-            case model::Dog::Direction::SOUTH: speed = model::Dog::Speed{0.0, speed_value}; break;
-            case model::Dog::Direction::WEST: speed = model::Dog::Speed{-speed_value, 0.0}; break;
-            case model::Dog::Direction::EAST: speed = model::Dog::Speed{speed_value, 0.0}; break;
+            case Direction::NORTH: speed = Dog::Speed{0.0, -speed_value}; break;
+            case Direction::SOUTH: speed = Dog::Speed{0.0, speed_value}; break;
+            case Direction::WEST: speed = Dog::Speed{-speed_value, 0.0}; break;
+            case Direction::EAST: speed = Dog::Speed{speed_value, 0.0}; break;
         }
         dog_->SetDirection(direction);
         dog_->SetSpeed(speed);
@@ -51,18 +52,18 @@ public:
             return;
         }
 
-        auto time_delta_d = std::chrono::duration<model::DimensionD>(time_delta).count();
+        auto time_delta_d = std::chrono::duration<DimensionD>(time_delta).count();
         auto current_pos = dog_->GetPosition();
-        auto next_pos = model::PointD{current_pos.x + (speed.x * time_delta_d), 
-                                      current_pos.y + (speed.y * time_delta_d)};
+        auto next_pos = PointD{current_pos.x + (speed.x * time_delta_d), 
+                               current_pos.y + (speed.y * time_delta_d)};
         const auto& roads = session_->GetMap()->GetRoads();
         
         // Есть ли дорога, которая содержит получившеюся позицию
-        auto any_road_it = std::find_if(roads.begin(), roads.end(), [&next_pos](const model::Road& road){
-            model::PointD min_road_pos{std::min(road.GetStart().x, road.GetEnd().x) - model::Road::HALF_WIDTH, 
-                                       std::min(road.GetStart().y, road.GetEnd().y) - model::Road::HALF_WIDTH};
-            model::PointD max_road_pos{std::max(road.GetStart().x, road.GetEnd().x) + model::Road::HALF_WIDTH, 
-                                       std::max(road.GetStart().y, road.GetEnd().y) + model::Road::HALF_WIDTH};
+        auto any_road_it = std::find_if(roads.begin(), roads.end(), [&next_pos](const Road& road){
+            PointD min_road_pos{std::min(road.GetStart().x, road.GetEnd().x) - Road::HALF_WIDTH, 
+                                std::min(road.GetStart().y, road.GetEnd().y) - Road::HALF_WIDTH};
+            PointD max_road_pos{std::max(road.GetStart().x, road.GetEnd().x) + Road::HALF_WIDTH, 
+                                std::max(road.GetStart().y, road.GetEnd().y) + Road::HALF_WIDTH};
             return (next_pos.x >= min_road_pos.x && next_pos.x <= max_road_pos.x
                     && next_pos.y >= min_road_pos.y && next_pos.y <= max_road_pos.y);
         });
@@ -73,9 +74,8 @@ public:
 
         // Нет дороги, которая содержала бы вычисленную позицию: ищем границу какой-то дороги взависимости от направления
         next_pos = current_pos;
-        bool next_pos_on_road = true;
         std::unordered_set<size_t> viewed_road_indeces;
-        while (next_pos_on_road) {
+        while (true) {
             int64_t roadIndex = FindRoadIndex(next_pos, viewed_road_indeces);
             if (roadIndex == -1) {
                 break;
@@ -84,34 +84,34 @@ public:
             const auto& road = roads.at(roadIndex);
             switch (dog_->GetDirection())
             {
-            case model::Dog::Direction::NORTH: {
+            case Direction::NORTH: {
                 next_pos.y = std::min(road.GetStart().y, road.GetEnd().y);
-                next_pos.y -= model::Road::HALF_WIDTH;
+                next_pos.y -= Road::HALF_WIDTH;
                 break;
             }
-            case model::Dog::Direction::SOUTH: {
+            case Direction::SOUTH: {
                 next_pos.y = std::max(road.GetStart().y, road.GetEnd().y);
-                next_pos.y += model::Road::HALF_WIDTH;
+                next_pos.y += Road::HALF_WIDTH;
                 break;
             }
-            case model::Dog::Direction::WEST: {
+            case Direction::WEST: {
                 next_pos.x = std::min(road.GetStart().x, road.GetEnd().x);
-                next_pos.x -= model::Road::HALF_WIDTH;
+                next_pos.x -= Road::HALF_WIDTH;
                 break;
             }
-            case model::Dog::Direction::EAST: {
+            case Direction::EAST: {
                 next_pos.x = std::max(road.GetStart().x, road.GetEnd().x);
-                next_pos.x += model::Road::HALF_WIDTH;
+                next_pos.x += Road::HALF_WIDTH;
                 break;
             }
             }
         }
-        dog_->SetSpeed(model::Dog::Speed{0.0, 0.0});
+        dog_->SetSpeed(Dog::Speed{0.0, 0.0});
         dog_->SetPosition(next_pos);
     }
 
 private:
-    int64_t FindRoadIndex(model::PointD pos, std::unordered_set<size_t>& viewed_road_indeces) {
+    int64_t FindRoadIndex(PointD pos, std::unordered_set<size_t>& viewed_road_indeces) {
         const auto& roads = session_->GetMap()->GetRoads();
         for (size_t i = 0; i < roads.size(); ++i) {
             if (viewed_road_indeces.count(i)) {
@@ -119,10 +119,10 @@ private:
             }
 
             const auto& road = roads.at(i);
-            model::PointD min_road_pos{std::min(road.GetStart().x, road.GetEnd().x) - model::Road::HALF_WIDTH, 
-                                       std::min(road.GetStart().y, road.GetEnd().y) - model::Road::HALF_WIDTH};
-            model::PointD max_road_pos{std::max(road.GetStart().x, road.GetEnd().x) + model::Road::HALF_WIDTH, 
-                                       std::max(road.GetStart().y, road.GetEnd().y) + model::Road::HALF_WIDTH};
+            PointD min_road_pos{std::min(road.GetStart().x, road.GetEnd().x) - Road::HALF_WIDTH, 
+                                std::min(road.GetStart().y, road.GetEnd().y) - Road::HALF_WIDTH};
+            PointD max_road_pos{std::max(road.GetStart().x, road.GetEnd().x) + Road::HALF_WIDTH, 
+                                std::max(road.GetStart().y, road.GetEnd().y) + Road::HALF_WIDTH};
             if (pos.x >= min_road_pos.x && pos.x <= max_road_pos.x
                 && pos.y >= min_road_pos.y && pos.y <= max_road_pos.y) {
                 viewed_road_indeces.insert(i);
@@ -134,8 +134,8 @@ private:
     }
 
 private:
-    model::GameSession* session_;
-    model::Dog* dog_;
+    Dog* dog_;
+    GameSession* session_;
 };
 
 class Players {
@@ -154,7 +154,7 @@ public:
     };
 
 public:
-    PlayerInfo Add(model::Dog* dog, model::GameSession* session) {
+    PlayerInfo Add(Dog* dog, GameSession* session) {
         PlayerInfo player_info{
             players_.emplace_back(std::make_unique<Player>(dog, session)).get(),
             Players::GeneratePlayerToken()
@@ -163,7 +163,7 @@ public:
         return player_info;
     }
 
-    Player* FindByDogIdAndMapId(uint64_t dog_id, model::Map::Id map_id) {
+    Player* FindByDogIdAndMapId(uint64_t dog_id, Map::Id map_id) {
         return nullptr;
     }
 

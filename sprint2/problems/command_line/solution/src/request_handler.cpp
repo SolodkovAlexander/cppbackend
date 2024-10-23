@@ -7,7 +7,7 @@
 namespace http_handler {
 
 std::string_view RequestHandler::ContentType::GetContentTypeByFileExtension(fs::path file_path) {
-    const static std::unordered_map<std::string, std::string_view> file_extension_to_content_type = {
+    static const std::unordered_map<std::string, std::string_view> file_extension_to_content_type = {
         {".htm"s, ContentType::TEXT_HTML},
         {".html"s, ContentType::TEXT_HTML},
         {".css"s, ContentType::TEXT_CSS},

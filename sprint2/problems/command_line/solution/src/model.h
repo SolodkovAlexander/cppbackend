@@ -47,9 +47,9 @@ class Road {
     };
 
 public:
-    constexpr static HorizontalTag HORIZONTAL{};
-    constexpr static VerticalTag VERTICAL{};
-    constexpr static DimensionD HALF_WIDTH = 0.4;
+    static constexpr HorizontalTag HORIZONTAL{};
+    static constexpr VerticalTag VERTICAL{};
+    static constexpr DimensionD HALF_WIDTH = 0.4;
 
     Road(HorizontalTag, Point start, Coord end_x) noexcept
         : start_{start}
@@ -184,14 +184,22 @@ private:
     DimensionD default_speed_;
 };
 
+class DirectionConvertException : public std::invalid_argument {
+public: 
+    using std::invalid_argument::invalid_argument;
+};
+
+enum class Direction {
+    NORTH,
+    SOUTH,
+    WEST,
+    EAST
+};
+std::string DirectionToString(Direction direction) noexcept;
+Direction DirectionFromString(const std::string& direction);
+
 class Dog {
 public:
-    enum class Direction {
-        NORTH,
-        SOUTH,
-        WEST,
-        EAST
-    };
     struct Speed {
         DimensionD x, y;
     };
@@ -234,28 +242,6 @@ public:
     }
     const std::string& GetName() const noexcept {
         return name_;
-    }
-
-public:
-    static std::string DirectionToString(Direction direction) noexcept {
-        using namespace std::literals;
-        static const auto info = std::unordered_map<Direction,std::string>{
-            {Direction::NORTH, "U"s},
-            {Direction::SOUTH, "D"s},
-            {Direction::WEST, "L"s},
-            {Direction::EAST, "R"s}
-        };
-        return info.at(direction);
-    }
-    static Direction DirectionFromString(const std::string& direction) noexcept {
-        using namespace std::literals;
-        static const auto info = std::unordered_map<std::string,Direction>{
-            {"U"s, Direction::NORTH},
-            {"D"s, Direction::SOUTH},
-            {"L"s, Direction::WEST},
-            {"R"s, Direction::EAST}
-        };
-        return info.at(direction);
     }
 
 private:
