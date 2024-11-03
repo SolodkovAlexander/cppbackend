@@ -49,11 +49,11 @@ def make_shots():
 
 server = run(start_server())
 time.sleep(1)
-run('sudo perf record -g -p ' + str(server.pid) + ' -o perf.data')
+run('perf record -g -p ' + str(server.pid) + ' -o perf.data')
 time.sleep(1)
 make_shots()
 stop(server)
 time.sleep(1)
-subprocess.check_output('sudo perf script | ./FlameGraph/stackcollapse-perf.pl | ./FlameGraph/flamegraph.pl > graph.svg', shell=True)
+subprocess.check_output('perf script -i perf.data | ./FlameGraph/stackcollapse-perf.pl | ./FlameGraph/flamegraph.pl > graph.svg', shell=True)
 time.sleep(1)
 print('Job done')
