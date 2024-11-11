@@ -1,14 +1,22 @@
+#include <iostream>
+
 #include "urldecode.h"
 
-#include <iostream>
-#include <string>
-
-int main(int argc, const char* argv[]) {
+int main() {
     using namespace std::literals;
 
-    std::string url;
-    std::getline(std::cin, url);
-    std::cout << UrlDecode(url);
+    try {
+        std::string s;
+        std::getline(std::cin, s);
 
-    return 0;
+        std::cout << UrlDecode(s) << std::endl;
+
+        return EXIT_SUCCESS;
+    } catch (const std::exception& e) {
+        std::cerr << "Error: "sv << e.what() << std::endl;
+    } catch (...) {
+        std::cerr << "Unknown error"sv << std::endl;
+    }
+
+    return EXIT_FAILURE;
 }

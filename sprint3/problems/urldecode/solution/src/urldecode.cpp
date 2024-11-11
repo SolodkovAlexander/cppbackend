@@ -1,7 +1,9 @@
 #include "urldecode.h"
 
-#include <boost/url.hpp>
+#include <charconv>
+#include <stdexcept>
 
+#include <boost/url.hpp>
 namespace urls = boost::urls;
 
 std::string UrlDecode(std::string_view str) {
