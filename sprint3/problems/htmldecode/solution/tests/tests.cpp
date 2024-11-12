@@ -4,7 +4,7 @@
 
 using namespace std::literals;
 
-TEST_CASE("Text without mnemonics", "[HtmlDecode]") {
+TEST_CASE("Tests by task", "[HtmlDecode]") {
     CHECK(HtmlDecode("hello"sv) == "hello"s);
     CHECK(HtmlDecode("hello&amp;"sv) == "hello&"s);
     CHECK(HtmlDecode(""sv) == ""s);
@@ -14,5 +14,3 @@ TEST_CASE("Text without mnemonics", "[HtmlDecode]") {
     CHECK(HtmlDecode("hello&am"sv) == "hello&am"s);
     CHECK(HtmlDecode("hello&amp"sv) == "hello&"s);
 }
-
-// Напишите недостающие тесты самостоятельно
