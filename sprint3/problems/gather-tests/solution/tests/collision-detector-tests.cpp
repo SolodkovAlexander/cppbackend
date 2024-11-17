@@ -54,8 +54,8 @@ private:
 };
 
 template<typename Events>
-AreEventsEqualMatcher<Events> AreEventsEqual(Events&& events) {
-    return AreEventsEqualMatcher<Events>{std::forward<Events>(events)};
+AreEventsEqualMatcher<Events> AreEventsEqual(Events events) {
+    return AreEventsEqualMatcher<Events>{events};
 }
 
 }  // namespace Catch
@@ -143,79 +143,75 @@ SCENARIO("Check no events") {
     }
 }
 
-SCENARIO("Check existing events") {
-    std::vector<Gatherer> gatherers;
-    gatherers.emplace_back(Gatherer{{0.0, 0.0},{10.0, 0.0}, 1.0});
-
+SCENARIO("Check existing events with one gatherer on X coordinate") {
     GIVEN("one gatherer and some items item") {
-        WHEN("items on gatherer's segment on line") {
-            std::vector<GatheringEvent> events = FindGatherEvents(ItemGathererProviderTest{gatherers, {{{0.0, 0.0}, 0.5},
-                                                                                                       {{1.0, 0.0}, 0.5},
-                                                                                                       {{3.0, 0.0}, 2.0},
-                                                                                                       {{5.0, 0.0}, 1.0},
-                                                                                                       {{7.0, 0.0}, 20.0},
-                                                                                                       {{10.0, 0.0}, 1.0}}});
-            THEN("some events") { 
-                CHECK_THAT(events, Catch::AreEventsEqual(std::vector{GatheringEvent{0,0,0,0},
-                                                                     GatheringEvent{1,0,0,0.1},
-                                                                     GatheringEvent{2,0,0,0.3},
-                                                                     GatheringEvent{3,0,0,0.5},
-                                                                     GatheringEvent{4,0,0,0.7},
-                                                                     GatheringEvent{5,0,0,1.0}}));
+        {
+            auto expected_events = std::vector{GatheringEvent{0,0,0,0},
+                                               GatheringEvent{1,0,0,0.1},
+                                               GatheringEvent{2,0,0,0.3},
+                                               GatheringEvent{3,0,0,0.5},
+                                               GatheringEvent{4,0,0,0.7},
+                                               GatheringEvent{5,0,0,1.0}};
+            WHEN("items on gatherer's segment on line") {
+                auto events = FindGatherEvents(ItemGathererProviderTest{{{{0.0, 0.0},{10.0, 0.0}, 1.0}}, 
+                                                                        {{{0.0, 0.0}, 0.5},
+                                                                        {{1.0, 0.0}, 0.5},
+                                                                        {{3.0, 0.0}, 2.0},
+                                                                        {{5.0, 0.0}, 1.0},
+                                                                        {{7.0, 0.0}, 20.0},
+                                                                        {{10.0, 0.0}, 1.0}}});
+                THEN("some events") { 
+                    CHECK_THAT(events, Catch::AreEventsEqual(expected_events));
+                }
+            }
+            WHEN("items on gatherer's segment on line (gatherer moving inverse)") {
+                auto events = FindGatherEvents(ItemGathererProviderTest{{{{0.0, 0.0},{-10.0, 0.0}, 1.0}}, 
+                                                                        {{{0.0, 0.0}, 0.5},
+                                                                        {{-1.0, 0.0}, 0.5},
+                                                                        {{-3.0, 0.0}, 2.0},
+                                                                        {{-5.0, 0.0}, 1.0},
+                                                                        {{-7.0, 0.0}, 20.0},
+                                                                        {{-10.0, 0.0}, 1.0}}});
+                THEN("some events") { 
+                    CHECK_THAT(events, Catch::AreEventsEqual(expected_events));
+                }
             }
         }
-        WHEN("items on gatherer's segment on line (gatherer moving inverse)") {
-            std::vector<GatheringEvent> events = FindGatherEvents(ItemGathererProviderTest{{{{0.0, 0.0},{-10.0, 0.0}, 1.0}}, 
-                                                                                           {{{0.0, 0.0}, 0.5},
-                                                                                            {{-1.0, 0.0}, 0.5},
-                                                                                            {{-3.0, 0.0}, 2.0},
-                                                                                            {{-5.0, 0.0}, 1.0},
-                                                                                            {{-7.0, 0.0}, 20.0},
-                                                                                            {{-10.0, 0.0}, 1.0}}});
-            THEN("some events") { 
-                CHECK_THAT(events, Catch::AreEventsEqual(std::vector{GatheringEvent{0,0,0,0},
-                                                                     GatheringEvent{1,0,0,0.1},
-                                                                     GatheringEvent{2,0,0,0.3},
-                                                                     GatheringEvent{3,0,0,0.5},
-                                                                     GatheringEvent{4,0,0,0.7},
-                                                                     GatheringEvent{5,0,0,1.0}}));
+
+        {
+            auto expected_events = std::vector{GatheringEvent{1,0,2.25,0.1},
+                                               GatheringEvent{2,0,1.0,0.1},
+                                               GatheringEvent{3,0,0.25,0.1},
+                                               GatheringEvent{4,0,0.25,0.1},
+                                               GatheringEvent{5,0,1.0,0.1},
+                                               GatheringEvent{6,0,2.25,0.1}};
+            WHEN("items on gatherer's segment below/above line") {
+                auto events = FindGatherEvents(ItemGathererProviderTest{{{{0.0, 0.0},{10.0, 0.0}, 1.0}}, 
+                                                                        {{{1.0, -2.0}, 0.5},
+                                                                        {{1.0, -1.5}, 0.5},
+                                                                        {{1.0, -1.0}, 0.5},
+                                                                        {{1.0, -0.5}, 0.5},
+                                                                        {{1.0, 0.5}, 0.5},
+                                                                        {{1.0, 1.0}, 0.5},
+                                                                        {{1.0, 1.5}, 0.5},
+                                                                        {{1.0, 2.0}, 0.5}}});
+                THEN("some events") { 
+                    CHECK_THAT(events, Catch::AreEventsEqual(expected_events));
+                }
             }
-        }
-        WHEN("items on gatherer's segment below/above line") {
-            std::vector<GatheringEvent> events = FindGatherEvents(ItemGathererProviderTest{gatherers, {{{1.0, -2.0}, 0.5},
-                                                                                                       {{1.0, -1.5}, 0.5},
-                                                                                                       {{1.0, -1.0}, 0.5},
-                                                                                                       {{1.0, -0.5}, 0.5},
-                                                                                                       {{1.0, 0.5}, 0.5},
-                                                                                                       {{1.0, 1.0}, 0.5},
-                                                                                                       {{1.0, 1.5}, 0.5},
-                                                                                                       {{1.0, 2.0}, 0.5}}});
-            THEN("some events") { 
-                CHECK_THAT(events, Catch::AreEventsEqual(std::vector{GatheringEvent{1,0,2.25,0.1},
-                                                                     GatheringEvent{2,0,1.0,0.1},
-                                                                     GatheringEvent{3,0,0.25,0.1},
-                                                                     GatheringEvent{4,0,0.25,0.1},
-                                                                     GatheringEvent{5,0,1.0,0.1},
-                                                                     GatheringEvent{6,0,2.25,0.1}}));
-            }
-        }
-        WHEN("items on gatherer's segment below/above line (gatherer moving inverse)") {
-            std::vector<GatheringEvent> events = FindGatherEvents(ItemGathererProviderTest{{{{0.0, 0.0},{-10.0, 0.0}, 1.0}}, 
-                                                                                           {{{-1.0, -2.0}, 0.5},
-                                                                                            {{-1.0, -1.5}, 0.5},
-                                                                                            {{-1.0, -1.0}, 0.5},
-                                                                                            {{-1.0, -0.5}, 0.5},
-                                                                                            {{-1.0, 0.5}, 0.5},
-                                                                                            {{-1.0, 1.0}, 0.5},
-                                                                                            {{-1.0, 1.5}, 0.5},
-                                                                                            {{-1.0, 2.0}, 0.5}}});
-            THEN("some events") { 
-                CHECK_THAT(events, Catch::AreEventsEqual(std::vector{GatheringEvent{1,0,2.25,0.1},
-                                                                     GatheringEvent{2,0,1.0,0.1},
-                                                                     GatheringEvent{3,0,0.25,0.1},
-                                                                     GatheringEvent{4,0,0.25,0.1},
-                                                                     GatheringEvent{5,0,1.0,0.1},
-                                                                     GatheringEvent{6,0,2.25,0.1}}));
+            WHEN("items on gatherer's segment below/above line (gatherer moving inverse)") {
+                auto events = FindGatherEvents(ItemGathererProviderTest{{{{0.0, 0.0},{-10.0, 0.0}, 1.0}}, 
+                                                                        {{{-1.0, -2.0}, 0.5},
+                                                                        {{-1.0, -1.5}, 0.5},
+                                                                        {{-1.0, -1.0}, 0.5},
+                                                                        {{-1.0, -0.5}, 0.5},
+                                                                        {{-1.0, 0.5}, 0.5},
+                                                                        {{-1.0, 1.0}, 0.5},
+                                                                        {{-1.0, 1.5}, 0.5},
+                                                                        {{-1.0, 2.0}, 0.5}}});
+                THEN("some events") { 
+                    CHECK_THAT(events, Catch::AreEventsEqual(expected_events));
+                }
             }
         }
     }
