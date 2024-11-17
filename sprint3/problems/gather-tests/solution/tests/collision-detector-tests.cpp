@@ -14,14 +14,15 @@ using namespace geom;
 
 namespace Catch {
 template<>
-struct StringMaker<collision_detector::GatheringEvent> {
-  static std::string convert(collision_detector::GatheringEvent const& value) {
+struct StringMaker<GatheringEvent> {
+  static std::string convert(GatheringEvent const& value) {
       std::ostringstream tmp;
-      tmp << "(" << value.gatherer_id << "," << value.item_id << "," << value.sq_distance << "," << value.time << ")";
+      tmp << "{" << value.item_id << "," << value.gatherer_id << "," << value.sq_distance << "," << value.time << "}";
 
       return tmp.str();
   }
 };
+}  // namespace Catch
 
 template <typename Events>
 struct AreEventsEqualMatcher : Catch::Matchers::MatcherGenericBase {
@@ -45,20 +46,16 @@ struct AreEventsEqualMatcher : Catch::Matchers::MatcherGenericBase {
     }
 
     std::string describe() const override {
-        // Описание свойства, проверяемого матчером:
-        return "Is permutation of: "s + Catch::rangeToString(events_);
+        return "Checking equality of: "s + Catch::rangeToString(events_);
     }
 
 private:
     Events events_;
 };
-
 template<typename Events>
 AreEventsEqualMatcher<Events> AreEventsEqual(Events events) {
     return AreEventsEqualMatcher<Events>{events};
 }
-
-}  // namespace Catch
 
 class ItemGathererProviderTest : public ItemGathererProvider {
 public:
@@ -161,7 +158,7 @@ SCENARIO("Check existing events with one gatherer on X coordinate") {
                                                                         {{7.0, 0.0}, 20.0},
                                                                         {{10.0, 0.0}, 1.0}}});
                 THEN("some events") { 
-                    CHECK_THAT(events, Catch::AreEventsEqual(expected_events));
+                    CHECK_THAT(events, AreEventsEqual(expected_events));
                 }
             }
             WHEN("items on gatherer's segment on line (gatherer moving inverse)") {
@@ -173,7 +170,7 @@ SCENARIO("Check existing events with one gatherer on X coordinate") {
                                                                         {{-7.0, 0.0}, 20.0},
                                                                         {{-10.0, 0.0}, 1.0}}});
                 THEN("some events") { 
-                    CHECK_THAT(events, Catch::AreEventsEqual(expected_events));
+                    CHECK_THAT(events, AreEventsEqual(expected_events));
                 }
             }
         }
@@ -196,7 +193,7 @@ SCENARIO("Check existing events with one gatherer on X coordinate") {
                                                                         {{1.0, 1.5}, 0.5},
                                                                         {{1.0, 2.0}, 0.5}}});
                 THEN("some events") { 
-                    CHECK_THAT(events, Catch::AreEventsEqual(expected_events));
+                    CHECK_THAT(events, AreEventsEqual(expected_events));
                 }
             }
             WHEN("items on gatherer's segment below/above line (gatherer moving inverse)") {
@@ -210,7 +207,7 @@ SCENARIO("Check existing events with one gatherer on X coordinate") {
                                                                         {{-1.0, 1.5}, 0.5},
                                                                         {{-1.0, 2.0}, 0.5}}});
                 THEN("some events") { 
-                    CHECK_THAT(events, Catch::AreEventsEqual(expected_events));
+                    CHECK_THAT(events, AreEventsEqual(expected_events));
                 }
             }
         }
