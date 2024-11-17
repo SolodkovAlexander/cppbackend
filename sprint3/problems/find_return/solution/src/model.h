@@ -227,8 +227,8 @@ public:
         : name_(name)
         , id_(id)
         , position_(position)
-        , speed_(speed) {
-        bag_.resize(bag_capacity);
+        , speed_(speed)
+        , bag_{bag_capacity, std::nullopt} {
     }
 
 public:
@@ -250,6 +250,19 @@ public:
             }
         }
         return items;
+    }
+    bool AddItemInBag(BagItem item) {
+        auto empty_place_it = std::find(bag_.begin(), bag_.end(), std::nullopt);
+        if (empty_place_it == bag_.end()) {
+            return false;
+        }
+        *(*empty_place_it) = item;
+        return true;
+    }
+    size_t ClearBag() {
+        size_t item_count = bag_.size() - std::count(bag_.begin(), bag_.end(), std::nullopt);
+        bag_ = std::vector<std::optional<BagItem>>{bag_.size(), std::nullopt};
+        return item_count;
     }
     Speed GetSpeed() const noexcept {
         return speed_;
@@ -335,6 +348,10 @@ void GenerateLostObjects(unsigned lost_object_count, size_t lost_object_types) {
     for (unsigned i = 0; i < lost_object_count; ++i) {
         lost_objects_.push_back(LostObject{ unif(rand_engine), GenerateRoadPosition(true) });
     }
+}
+
+void RemoveLostObject(size_t lost_object_index) {
+    lost_objects_.erase(lost_objects_.begin() + lost_object_index);
 }
 
 private:

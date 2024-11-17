@@ -52,6 +52,34 @@ struct GatheringEvent {
     double time;
 };
 
+class Provider : public ItemGathererProvider {
+public:
+    Provider() = default;
+
+    Provider(const std::vector<Gatherer>& gatherers, const std::vector<Item>& items)
+        : gatherers_(gatherers)
+        , items_(items)
+      {}
+
+public:
+    size_t ItemsCount() const {
+        return items_.size();
+    }
+    Item GetItem(size_t idx) const {
+        return items_.at(idx);
+    }
+    size_t GatherersCount() const {
+        return gatherers_.size();
+    }
+    Gatherer GetGatherer(size_t idx) const {
+        return gatherers_.at(idx);
+    }
+
+private:
+    const std::vector<Gatherer>& gatherers_;
+    const std::vector<Item>& items_;
+};
+
 // Эту функцию вам нужно будет реализовать в соответствующем задании.
 // При проверке ваших тестов она не нужна - функция будет линковаться снаружи.
 std::vector<GatheringEvent> FindGatherEvents(const ItemGathererProvider& provider);

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "collision_detector.h"
 #include "json_parser.h"
 #include "loot_generator.h"
 #include "model.h"
@@ -182,8 +183,85 @@ public:
         if (delta < 0ms) {
             throw AppErrorException("Whrong time"s, AppErrorException::Category::InvalidTime);
         }
+
+        // Получаем игроков
+        const auto& players = players_.GetPlayers();
         
-        players_.MoveAllPlayers(delta);
+        // Формируем игроков по сессиям
+        std::unordered_map<GameSession*, std::vector<Player*>> session_players;
+        for (const auto& player : players) {
+            session_players[player->GetSession()].emplace_back(player.get());
+        }
+
+        // Доп. данные об игроках для формирования событий в игре
+        static const double player_width = 0.6;
+        static const double item_width = 0.0;
+        static const double base_width = 0.5;
+
+        // Идем по сессиям
+        for (const auto& [session, players] : session_players) {
+            size_t office_count = session->GetMap()->GetOffices().size();
+            
+            // Формируем информацию о базах и информацию о луте
+            std::vector<collision_detector::Item> items;
+            items.reserve(office_count + session->GetLostObjects().size());
+            for (const auto& office : session->GetMap()->GetOffices()) {
+                items.emplace_back(collision_detector::Item{{static_cast<double>(office.GetPosition().x), 
+                                                             static_cast<double>(office.GetPosition().y)}, 
+                                                             base_width});
+            }
+            auto lost_objects = session->GetLostObjects();
+            for (const auto& lost_object : lost_objects) {
+                items.emplace_back(collision_detector::Item{{lost_object.position.x, lost_object.position.y}, 
+                                                             item_width});
+            }
+
+            // Формируем информацию об игроках
+            std::vector<collision_detector::Gatherer> gatherers;
+            gatherers.reserve(players.size());
+            for (auto player : players) {
+                auto player_next_state = players_.CalcPlayerNextState(player, delta);
+                gatherers.emplace_back(collision_detector::Gatherer{{player->GetPosition().x, player->GetPosition().y},
+                                                                    {player_next_state.position.x, player_next_state.position.y},
+                                                                    player_width});
+            }
+
+            // Получаем события
+            auto events = collision_detector::FindGatherEvents(collision_detector::Provider(gatherers, items));
+
+            // Разбираем события получения предметов/посещения базы
+            std::unordered_set<size_t> lost_objects_taken;
+            for (const auto& event : events) {
+                auto player = players.at(event.gatherer_id);
+
+                // Определяем: предмет или база получены
+                bool is_office_event{event.item_id < office_count};
+                if (is_office_event) {
+                    // Отдаём на базу предметы
+                    player->ClearBag();
+                    continue;
+                }
+
+                size_t lost_object_index = event.item_id - office_count;
+
+                // Если по предмету уже прошлись: пропускаем событие
+                if (lost_objects_taken.count(lost_object_index)) {
+                    continue;
+                }
+
+                // Если предмет смогли упаковать в рюкзак
+                if (player->AddItemInBag(lost_object_index, lost_objects.at(lost_object_index).type)) {
+                    lost_objects_taken.insert(lost_object_index);
+                }
+            }
+
+            // Удаляем полученные игроками предметы из списка потерянных
+            for (size_t lost_object_index : lost_objects_taken) {
+                session->RemoveLostObject(lost_object_index);
+            }
+        }
+        
+        // Генерируем новый лут
         GenerateMapsLostObjects(delta);
     }
 
