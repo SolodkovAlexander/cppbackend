@@ -145,7 +145,7 @@ SCENARIO("Check no events") {
 
 SCENARIO("Check existing events") {
     std::vector<Gatherer> gatherers;
-    gatherers.emplace_back(Gatherer{Point2D{0.0, 0.0},Point2D{10.0, 0.0}, 1.0});
+    gatherers.emplace_back(Gatherer{Point2D{0.0, 0.0},Point2D{10.0, 0.0}, 0.1});
 
     GIVEN("one gatherer and one item") {
         WHEN("item on gatherer's start pos") {
@@ -157,7 +157,7 @@ SCENARIO("Check existing events") {
         WHEN("item on gatherer's start pos") {
             std::vector<GatheringEvent> events = FindGatherEvents(ItemGathererProviderTest{gatherers, {Item{Point2D{1.0, 0.0}, 0.5}}});
             THEN("one event") { 
-                CHECK_THAT(events, Catch::AreEventsEqual(std::vector{GatheringEvent{0,0,0,0.5}}));
+                CHECK_THAT(events, Catch::AreEventsEqual(std::vector{GatheringEvent{0,0,0,0.1}}));
             }
         }
     }
