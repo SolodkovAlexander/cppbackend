@@ -92,17 +92,14 @@ SCENARIO("Check no events") {
     std::vector<Gatherer> gatherers;
     gatherers.emplace_back(Gatherer{Point2D{0.0, 0.0},Point2D{1.0, 0.0}, 1.0});
 
-    std::vector<Item> items;
-    items.emplace_back(Item{Point2D{0.0, 0.0}, 1.0});
-
     GIVEN("Have provider without any data") {
         REQUIRE(FindGatherEvents(ItemGathererProviderTest{}).empty());
         REQUIRE(FindGatherEvents(ItemGathererProviderTest{gatherers}).empty());
-        REQUIRE(FindGatherEvents(ItemGathererProviderTest{{}, items}).empty());
+        REQUIRE(FindGatherEvents(ItemGathererProviderTest{{}, {Item{Point2D{0.0, 0.0}, 1.0}}}).empty());
     }
 
     GIVEN("Have provider with data, but no events") {
-        auto events = FindGatherEvents(ItemGathererProviderTest{gatherers, {Item{Point2D{-1.0, 0.0}, 0.5}}});
+        auto events = FindGatherEvents(ItemGathererProviderTest{gatherers, {Item{Point2D{-2.0, 0.0}, 0.5}}});
         WHEN("one gatherer and item on line before gatherer start pos") {
             THEN("no events") { REQUIRE(events.empty()); }
         }
@@ -110,28 +107,37 @@ SCENARIO("Check no events") {
         WHEN("one gatherer and item on line after gatherer finish pos") {
             THEN("no events") { REQUIRE(events.empty()); }
         }
-        events = FindGatherEvents(ItemGathererProviderTest{gatherers, {Item{Point2D{0.5, 1.0}, 0.5}}});
+        events = FindGatherEvents(ItemGathererProviderTest{gatherers, {Item{Point2D{0.5, 2.0}, 0.5}}});
         WHEN("one gatherer and item above the segment") {
             THEN("no events") { REQUIRE(events.empty()); }
         }
-        events = FindGatherEvents(ItemGathererProviderTest{gatherers, {Item{Point2D{0.5, -1.0}, 0.5}}});
+        events = FindGatherEvents(ItemGathererProviderTest{gatherers, {Item{Point2D{0.5, 2.0}, 0.5}}});
         WHEN("one gatherer and item below the segment") {
             THEN("no events") { REQUIRE(events.empty()); }
         }
-        events = FindGatherEvents(ItemGathererProviderTest{gatherers, {Item{Point2D{2, -1.0}, 0.5}}});
+        events = FindGatherEvents(ItemGathererProviderTest{gatherers, {Item{Point2D{0.5, -2.0}, 0.5}}});
         WHEN("one gatherer and item after finish pos below the line") {
             THEN("no events") { REQUIRE(events.empty()); }
         }
-        events = FindGatherEvents(ItemGathererProviderTest{gatherers, {Item{Point2D{-1, -1.0}, 0.5}}});
+        events = FindGatherEvents(ItemGathererProviderTest{gatherers, {Item{Point2D{-2, -2.0}, 0.5}}});
         WHEN("one gatherer and item before start pos below the line") {
             THEN("no events") { REQUIRE(events.empty()); }
         }
-        events = FindGatherEvents(ItemGathererProviderTest{gatherers, {Item{Point2D{-1, 1.0}, 0.5}}});
+        events = FindGatherEvents(ItemGathererProviderTest{gatherers, {Item{Point2D{-2, 2.0}, 0.5}}});
         WHEN("one gatherer and item before start pos above the line") {
             THEN("no events") { REQUIRE(events.empty()); }
         }
-        events = FindGatherEvents(ItemGathererProviderTest{gatherers, {Item{Point2D{2, 1.0}, 0.5}}});
+        events = FindGatherEvents(ItemGathererProviderTest{gatherers, {Item{Point2D{2, 2.0}, 0.5}}});
         WHEN("one gatherer and item after finish pos above the line") {
+            THEN("no events") { REQUIRE(events.empty()); }
+        }
+        events = FindGatherEvents(ItemGathererProviderTest{{Gatherer{Point2D{0.0, 0.0},Point2D{0.0, 0.0}, 1.0}}});
+        WHEN("one gatherer no moving") {
+            THEN("no events") { REQUIRE(events.empty()); }
+        }
+        events = FindGatherEvents(ItemGathererProviderTest{{Gatherer{Point2D{0.0, 0.0},Point2D{0.0, 0.0}, 1.0}},
+                                                           {Item{Point2D{0.0, 0.0}, 0.5}}});
+        WHEN("one gatherer no moving and item on start post") {
             THEN("no events") { REQUIRE(events.empty()); }
         }
     }
@@ -139,16 +145,19 @@ SCENARIO("Check no events") {
 
 SCENARIO("Check existing events") {
     std::vector<Gatherer> gatherers;
-    gatherers.emplace_back(Gatherer{Point2D{0.0, 0.0},Point2D{1.0, 0.0}, 1.0});
+    gatherers.emplace_back(Gatherer{Point2D{0.0, 0.0},Point2D{10.0, 0.0}, 1.0});
 
-    std::vector<Item> items;
-    items.emplace_back(Item{Point2D{0.0, 0.0}, 1.0});
-
-    GIVEN("Have provider with data") {
-        WHEN("one gatherer and item on start pos") {
+    GIVEN("one gatherer and one item") {
+        WHEN("item on gatherer's start pos") {
+            std::vector<GatheringEvent> events = FindGatherEvents(ItemGathererProviderTest{gatherers, {Item{Point2D{0.0, 0.0}, 0.5}}});
             THEN("one event") { 
-                std::vector<GatheringEvent> events = FindGatherEvents(ItemGathererProviderTest{gatherers, {Item{Point2D{0.0, 0.0}, 0.5}}});
                 CHECK_THAT(events, Catch::AreEventsEqual(std::vector{GatheringEvent{0,0,0,0}}));
+            }
+        }
+        WHEN("item on gatherer's start pos") {
+            std::vector<GatheringEvent> events = FindGatherEvents(ItemGathererProviderTest{gatherers, {Item{Point2D{1.0, 0.0}, 0.5}}});
+            THEN("one event") { 
+                CHECK_THAT(events, Catch::AreEventsEqual(std::vector{GatheringEvent{0,0,0,0.5}}));
             }
         }
     }
