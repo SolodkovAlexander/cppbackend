@@ -1,13 +1,15 @@
 #pragma once
 #include "sdk.h"
+#include "json_logger.h"
+
 // boost.beast будет использовать std::string_view вместо boost::string_view
 #define BOOST_BEAST_USE_STD_STRING_VIEW
 
+#include <boost/algorithm/string.hpp>
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/asio/strand.hpp>
 #include <boost/beast/core.hpp>
 #include <boost/beast/http.hpp>
-#include <iostream>
 
 namespace http_server {
 
@@ -57,15 +59,18 @@ private:
         if (ec) {
             return ReportError(ec, "read"sv);
         }
+        
+        json_logger::LogData("request received"sv,
+                             boost::json::object{{"ip", stream_.socket().remote_endpoint().address().to_string()},
+                                                 {"URI", request_.target()}, 
+                                                 {"method", boost::to_upper_copy<std::string>(request_.method_string())}});
+
         HandleRequest(std::move(request_));
     }
 
     void Close() {
         beast::error_code ec;
         stream_.socket().shutdown(tcp::socket::shutdown_send, ec);
-        if (ec) {
-            return ReportError(ec, "close"sv);
-        }
     }
 
     // Обработку запроса делегируем подклассу
