@@ -31,7 +31,7 @@ using ParseJSONParamsException = sys::system_error;
 
 class MakingResponseDurationLogger {
 public:
-    MakingResponseDurationLogger(RequestResponse& response) :
+    explicit MakingResponseDurationLogger(RequestResponse& response) :
         response_(response)
     {}
     ~MakingResponseDurationLogger() {
@@ -398,15 +398,6 @@ private:
         }
     }
     
-    static std::optional<std::string> TryExtractToken(std::string&& auth_header) {
-        static const auto token_regex = std::regex(R"(Bearer\s([0-9a-fA-F]{32}))");
-        std::smatch match_results;
-        if (!regex_match(auth_header, match_results, token_regex)) {
-            return {};
-        }
-        return boost::algorithm::to_lower_copy(match_results[1].str());
-    }
-
     template <typename Body, typename Allocator>
     static FileResponse MakeFileResponse(http::status status, 
                                          http::file_body::value_type&& file, 
@@ -639,7 +630,16 @@ private:
         }
         case ApiRequestType::Map: {
             switch (error_type) {
-                case ResponseErrorType::BadRequest:
+                case ResponseErrorType::BadRequest: {
+                    result = MakeStringResponse<Body, Allocator>(http::status::method_not_allowed, 
+                                                                 json::serialize(json::object{
+                                                                     {"code"sv, "invalidMethod"sv}, 
+                                                                     {"message"sv, "Invalid method"sv}
+                                                                 }), 
+                                                                 req);
+                    (*result).set(http::field::allow, "GET, HEAD"sv);
+                    break;
+                }
                 case ResponseErrorType::InvalidMapId: {
                     result = MakeStringResponse<Body, Allocator>(http::status::bad_request, 
                                                                 json::serialize(json::object({
@@ -657,9 +657,7 @@ private:
                                                                     {"code", "mapNotFound"s},
                                                                     {"message", "Map not found"s}
                                                                 })), 
-                                                                req,
-                                                                ContentType::APPLICATION_JSON,
-                                                                true);
+                                                                req);
                     break;
                 }
             }
@@ -729,6 +727,7 @@ private:
 
 private:
     static bool IsSubPath(fs::path path, fs::path base);
+    static std::optional<std::string> TryExtractToken(std::string&& auth_header);
 
     template <typename Body, typename Allocator>
     static RequestType CheckRequestType(const http::request<Body, http::basic_fields<Allocator>> &req) {
@@ -740,11 +739,9 @@ private:
     }
 
 private:
+    Application& app_;
     fs::path static_data_path_;
     Strand api_strand_;
-
-private:
-    Application& app_;
 };
 
 }  // namespace http_handler

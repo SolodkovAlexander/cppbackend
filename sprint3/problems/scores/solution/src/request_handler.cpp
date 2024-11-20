@@ -46,4 +46,13 @@ bool RequestHandler::IsSubPath(fs::path wc_path, fs::path wc_base) {
     return true;
 }
 
+std::optional<std::string> RequestHandler::TryExtractToken(std::string&& auth_header) {
+    static const auto token_regex = std::regex(R"(Bearer\s([0-9a-fA-F]{32}))");
+    std::smatch match_results;
+    if (!regex_match(auth_header, match_results, token_regex)) {
+        return {};
+    }
+    return boost::algorithm::to_lower_copy(match_results[1].str());
+}
+
 }  // namespace http_handler

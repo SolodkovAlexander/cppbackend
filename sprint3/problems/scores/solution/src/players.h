@@ -15,6 +15,12 @@ using namespace model;
 
 class Player {
 public:
+    struct State {
+        model::PointD position;
+        bool stopped;
+    };
+    
+public:
     Player(Dog* dog, GameSession* session) :
         dog_(dog),
         session_(session)
@@ -24,8 +30,33 @@ public:
     Dog::DogId GetId() const {
         return dog_->GetId();
     }
-    GameSession* GetSession() const {
+
+    GameSession* GetSession() const noexcept {
         return session_;
+    }
+
+    model::PointD GetPosition() const {
+        return dog_->GetPosition();
+    }
+
+    std::vector<Dog::BagItem> GetBagItems() const {
+        return dog_->GetBagItems();
+    }    
+
+    void AddScore(size_t score) {
+        score_ += score;
+    }
+
+    size_t GetScore() const {
+        return score_;
+    }
+
+    size_t ClearBag() {
+        return dog_->ClearBag();
+    }
+
+    bool AddItemInBag(size_t item_id, size_t item_type) {
+        return dog_->AddItemInBag(Dog::BagItem{item_id, item_type});
     }
 
     void SetSpeed(Dog::Speed speed) {
@@ -46,10 +77,17 @@ public:
         dog_->SetSpeed(speed);
     }
 
-    void Move(std::chrono::milliseconds time_delta) {
+    void SetState(Player::State state) {
+        dog_->SetPosition(state.position);
+        if (state.stopped) {
+            dog_->SetSpeed(Dog::Speed{0.0, 0.0});
+        }
+    }
+    
+    Player::State GetNextState(std::chrono::milliseconds time_delta) {
         auto speed = dog_->GetSpeed();
         if (speed.x == 0.0 && speed.y == 0.0) {
-            return;
+            return {dog_->GetPosition(), true};
         }
 
         auto time_delta_d = std::chrono::duration<DimensionD>(time_delta).count();
@@ -68,8 +106,7 @@ public:
                     && next_pos.y >= min_road_pos.y && next_pos.y <= max_road_pos.y);
         });
         if (any_road_it != roads.end()) {
-            dog_->SetPosition(next_pos);
-            return;
+            return {next_pos, false};
         }
 
         // Нет дороги, которая содержала бы вычисленную позицию: ищем границу какой-то дороги взависимости от направления
@@ -106,8 +143,7 @@ public:
             }
             }
         }
-        dog_->SetSpeed(Dog::Speed{0.0, 0.0});
-        dog_->SetPosition(next_pos);
+        return {next_pos, true};
     }
 
 private:
@@ -136,9 +172,13 @@ private:
 private:
     Dog* dog_;
     GameSession* session_;
+    size_t score_{0};
 };
 
 class Players {
+public:
+    using PlayersContainer = std::vector<std::unique_ptr<Player>>;
+
 public:
     Players() = default;
     
@@ -174,10 +214,12 @@ public:
         return player_by_token_[token];
     }
 
-    void MoveAllPlayers(std::chrono::milliseconds time_delta) {
-        for (const auto& player : players_) {
-            player->Move(time_delta);
-        }
+    const PlayersContainer& GetPlayers() const {
+        return players_;
+    }
+
+    Player::State CalcPlayerNextState(Player* player, std::chrono::milliseconds time_delta) {
+        return player->GetNextState(time_delta);
     }
 
 private:
@@ -196,7 +238,6 @@ private:
     }
 
 private:
-    using PlayersContainer = std::vector<std::unique_ptr<Player>>;
     using PlayerByToken = std::unordered_map<Token, Player*>;
 
     PlayersContainer players_;

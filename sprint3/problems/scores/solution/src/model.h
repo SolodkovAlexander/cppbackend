@@ -1,6 +1,7 @@
 #pragma once
 
 #include <memory>
+#include <optional>
 #include <random>
 #include <string>
 #include <unordered_map>
@@ -131,10 +132,11 @@ public:
     using Buildings = std::vector<Building>;
     using Offices = std::vector<Office>;
 
-    Map(Id id, std::string name, const model::DimensionD& default_speed) noexcept
+    Map(Id id, std::string name, model::DimensionD default_speed, size_t default_bag_capacity) noexcept
         : id_(std::move(id))
         , name_(std::move(name))
-        , default_speed_(default_speed) {
+        , default_speed_(default_speed)
+        , default_bag_capacity_(default_bag_capacity) {
     }
 
     const Id& GetId() const noexcept {
@@ -161,6 +163,10 @@ public:
         return default_speed_;
     }
 
+    size_t GetDefaultBagCapacity() const noexcept {
+        return default_bag_capacity_;
+    }
+
     void AddRoad(const Road& road) {
         roads_.emplace_back(road);
     }
@@ -182,6 +188,7 @@ private:
     OfficeIdToIndex warehouse_id_to_index_;
     Offices offices_;
     DimensionD default_speed_;
+    size_t default_bag_capacity_;
 };
 
 class DirectionConvertException : public std::invalid_argument {
@@ -203,20 +210,26 @@ public:
     struct Speed {
         DimensionD x, y;
     };
+    struct BagItem {
+        size_t id;
+        size_t type;
+    };
 
 private:
     static constexpr PointD DEFAULT_POSITION = PointD{0.0, 0.0};
     static constexpr Speed DEFAULT_SPEED = Speed{0.0, 0.0};
+    static constexpr size_t DEFAULT_BAG_CAPACITY = 3;
 
 public:
     using DogId = std::uint64_t;
 
-    Dog(const std::string& name, DogId id, PointD position = DEFAULT_POSITION, Speed speed = DEFAULT_SPEED) 
+    Dog(const std::string& name, DogId id, PointD position = DEFAULT_POSITION, Speed speed = DEFAULT_SPEED, size_t bag_capacity = DEFAULT_BAG_CAPACITY) 
         : name_(name)
         , id_(id)
         , position_(position)
         , speed_(speed)
-    {}
+        , bag_{bag_capacity, std::nullopt} {
+    }
 
 public:
     DogId GetId() const noexcept {
@@ -227,6 +240,29 @@ public:
     }
     void SetPosition(PointD position) {
         position_ = position;
+    }
+    std::vector<BagItem> GetBagItems() const noexcept {
+        std::vector<BagItem> items;
+        items.reserve(bag_.size());
+        for (const auto& item : bag_) {
+            if (item) {
+                items.emplace_back(*item);
+            }
+        }
+        return items;
+    }
+    bool AddItemInBag(BagItem item) {
+        auto empty_place_it = std::find(bag_.begin(), bag_.end(), std::nullopt);
+        if (empty_place_it == bag_.end()) {
+            return false;
+        }
+        *(*empty_place_it) = item;
+        return true;
+    }
+    size_t ClearBag() {
+        size_t item_count = bag_.size() - std::count(bag_.begin(), bag_.end(), std::nullopt);
+        bag_ = std::vector<std::optional<BagItem>>{bag_.size(), std::nullopt};
+        return item_count;
     }
     Speed GetSpeed() const noexcept {
         return speed_;
@@ -250,6 +286,7 @@ private:
     Direction direction_ = Direction::NORTH;
     PointD position_{0.0, 0.0};
     Speed speed_{0.0, 0.0};
+    std::vector<std::optional<BagItem>> bag_;
 };
 
 class GameSession {
@@ -269,12 +306,57 @@ public:
     Dog* CreateDog(const std::string& name, bool randomize_spawn_point = false) {
         auto dog = dogs_.emplace_back(std::make_unique<Dog>(name, 
                                                             dogs_.size(), 
-                                                            GenerateNewDogPosition(randomize_spawn_point))).get();
+                                                            GenerateRoadPosition(randomize_spawn_point),
+                                                            Dog::Speed{0.0, 0.0},
+                                                            map_->GetDefaultBagCapacity())).get();
         dog_id_to_dog_[dog->GetId()] = dog;
         return dog;
     }
-    PointD GenerateNewDogPosition(bool randomize_spawn_point = false) const noexcept {
-        if (!randomize_spawn_point) {
+
+    std::vector<Dog*> GetDogs() {
+        std::vector<Dog*> dogs;
+        dogs.reserve(dogs_.size());
+        for (const auto& dog : dogs_) {
+            dogs.emplace_back(dog.get());
+        }
+        return dogs;
+    }
+
+    const Map* GetMap() const {
+        return map_;
+    }
+
+public:
+struct LostObject {
+    size_t type = 0;
+    PointD position{0.0, 0.0};
+};
+
+const std::vector<LostObject>& GetLostObjects() const noexcept {
+    return lost_objects_;
+}
+
+void GenerateLostObjects(unsigned lost_object_count, size_t lost_object_types) {
+    if (lost_object_types == 0) {
+        return;
+    }
+
+    std::random_device rand_device; 
+    std::mt19937_64 rand_engine(rand_device());
+    std::uniform_int_distribution<size_t> unif(0, lost_object_types - 1);
+
+    for (unsigned i = 0; i < lost_object_count; ++i) {
+        lost_objects_.push_back(LostObject{ unif(rand_engine), GenerateRoadPosition(true) });
+    }
+}
+
+void RemoveLostObject(size_t lost_object_index) {
+    lost_objects_.erase(lost_objects_.begin() + lost_object_index);
+}
+
+private:
+    PointD GenerateRoadPosition(bool randomize = false) const noexcept {
+        if (!randomize) {
             return PointD{CoordD(map_->GetRoads().at(0).GetStart().x), 
                           CoordD(map_->GetRoads().at(0).GetStart().y)};
         }
@@ -302,31 +384,21 @@ public:
         return pos;
     }
 
-    std::vector<Dog*> GetDogs() {
-        std::vector<Dog*> dogs;
-        dogs.reserve(dogs_.size());
-        for (const auto& dog : dogs_) {
-            dogs.emplace_back(dog.get());
-        }
-        return dogs;
-    }
-
-    const Map* GetMap() const {
-        return map_;
-    }
-
 private:
     Dogs dogs_;
     DogIdToDog dog_id_to_dog_;
     const Map* map_;
+    std::vector<LostObject> lost_objects_;
 };
 
 class Game {
 public:
     static constexpr DimensionD DEFAULT_SPEED = 1.0;
+    static constexpr size_t DEFAULT_BAG_CAPACITY = 3;
 
-    Game(DimensionD map_default_speed = DEFAULT_SPEED)
+    Game(DimensionD map_default_speed = DEFAULT_SPEED, size_t map_default_bag_capacity = DEFAULT_BAG_CAPACITY)
          : map_default_speed_{map_default_speed}
+         , map_default_bag_capacity_{map_default_bag_capacity}
     {}
 
 public:
@@ -349,6 +421,9 @@ public:
     DimensionD GetMapDefaultSpeed() const noexcept {
         return map_default_speed_;
     }
+    size_t GetMapDefaultBagCapacity() const noexcept {
+        return map_default_bag_capacity_;
+    }
 
     GameSession* CreateSession(const Map* map) {
         return sessions_.emplace_back(std::make_unique<GameSession>(map)).get();
@@ -360,6 +435,7 @@ public:
 
 private:
     DimensionD map_default_speed_;
+    size_t map_default_bag_capacity_;
 
 private:
     using MapIdHasher = util::TaggedHasher<Map::Id>;
