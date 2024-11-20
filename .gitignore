@@ -731,8 +731,10 @@ sprint3/problems/flamegraph/solution/graph.svg
 
 **/.DS_Store
 
-# Custom build directories
-build_Debug
-
-# Custom VSCode settings directories
+# VSCode settings
 .vscode
+
+# Special build dir
+build_Debug
+build_Release
+

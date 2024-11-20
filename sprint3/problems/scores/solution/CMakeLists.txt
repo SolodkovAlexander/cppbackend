@@ -62,6 +62,7 @@ add_executable(game_server
 	src/request_handler.h
 	src/ticker.h
 	src/application.h
+	src/application.cpp
 	src/players.h
 )
 target_include_directories(game_server PRIVATE CONAN_PKG::boost)
