@@ -143,10 +143,7 @@ public:
 
     void AddOffice(Office office);
 
-    bool CheckRoadPosition(Road::Position pos) const noexcept {
-        // TODO
-        return true;
-    }
+    bool CheckRoadPosition(Road::Position pos) const noexcept { return true; }
 
 private:
     using OfficeIdToIndex = std::unordered_map<Office::Id, size_t, util::TaggedHasher<Office::Id>>;

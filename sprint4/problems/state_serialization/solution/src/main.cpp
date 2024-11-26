@@ -54,16 +54,6 @@ struct Args {
     po::options_description desc{"Allowed options"s};
 
     Args args;
-    //args.randomize_spawn_points = false;
-    /*args.www_root = "/home/developer/yandex/cppbackend/sprint4/problems/state_serialization/solution/static"s;
-    args.config_file = "/home/developer/yandex/cppbackend/sprint4/problems/state_serialization/solution/data/config.json"s;
-    args.state_file = "/home/developer/yandex/cppbackend/sprint4/problems/state_serialization/solution/state.txt"s;
-    args.save_state_period = 1000;
-    args.tick_period = -1;
-    return args;*/
-    /*args.save_state_period = -1;
-    args.tick_period = -1;*/
-
     desc.add_options()
         ("help,h", "produce help message")
         ("tick-period,t", po::value(&args.tick_period)->value_name("milliseconds"), "set tick period")
@@ -118,6 +108,7 @@ int main(int argc, const char* argv[]) {
             server_state_saver::ServerStateSaver server_state_saver(app,
                                                                     args->state_file, 
                                                                     args->save_state_period);
+            // 1.2. Восстанавливаем состояние сервера
             server_state_saver.RestoreState();
 
             // 1.2 Делаем обработку сигнала по tick: сохраняем состояние сервера
@@ -174,7 +165,7 @@ int main(int argc, const char* argv[]) {
                 ioc.run();
             });
 
-            //TODO
+            // 8. Сохраняем состояние сервера
             server_state_saver.SaveState();
 
             json_logger::LogData("server exited"sv, boost::json::object{{"code", 0}});
