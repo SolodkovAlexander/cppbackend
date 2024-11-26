@@ -22,8 +22,6 @@ CollectionResult TryCollectPoint(geom::Point2D a, geom::Point2D b, geom::Point2D
     return CollectionResult(sq_distance, proj_ratio);
 }
 
-// В задании на разработку тестов реализовывать следующую функцию не нужно -
-// она будет линковаться извне.
 std::vector<GatheringEvent> FindGatherEvents(const ItemGathererProvider& provider) {
     std::vector<GatheringEvent> detected_events;
 

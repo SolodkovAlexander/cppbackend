@@ -105,7 +105,7 @@ void Application::ActionPlayer(const Players::Token& player_token, const std::st
     }        
 
     if (!direction) {
-        player->SetSpeed(Dog::Speed{0.0, 0.0});
+        player->SetSpeed({0.0, 0.0});
     } else {
         player->ChangeDirection(*direction);
     }

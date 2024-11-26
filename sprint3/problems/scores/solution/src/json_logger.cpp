@@ -25,7 +25,7 @@ void LogFormatter(logging::record_view const& rec, logging::formatting_ostream& 
 
     try {
         message_object["data"] = *rec[additional_data];
-    } catch (...) {}
+    } catch (const std::exception&) {}
 
     message_object["message"] = *rec[logging::expressions::smessage];
 
