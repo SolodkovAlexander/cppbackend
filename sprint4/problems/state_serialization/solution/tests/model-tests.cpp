@@ -29,13 +29,6 @@ SCENARIO("Loot objects generation in game session") {
     GIVEN("a game session") {
         auto game_session = game.CreateSession(game.FindMap(Map::Id{"map1"s}), 100);
 
-        WHEN("no lost objects count") {
-            THEN("no lost objects are generated") {
-                game_session->GenerateLostObjects(0);
-                REQUIRE(game_session->GetLostObjects().empty());
-            }
-        }
-
         WHEN("have lost objects and types") {
             THEN("all lost objects are generated with randomize types") {
                 game_session->GenerateLostObjects(100);

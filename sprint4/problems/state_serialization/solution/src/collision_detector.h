@@ -14,13 +14,11 @@ struct CollectionResult {
 
     // квадрат расстояния до точки
     double sq_distance;
-
     // доля пройденного отрезка
     double proj_ratio;
 };
 
 // Движемся из точки a в точку b и пытаемся подобрать точку c.
-// Эта функция реализована в уроке.
 CollectionResult TryCollectPoint(geom::Point2D a, geom::Point2D b, geom::Point2D c);
 
 struct Item {
@@ -62,26 +60,16 @@ public:
       {}
 
 public:
-    size_t ItemsCount() const {
-        return items_.size();
-    }
-    Item GetItem(size_t idx) const {
-        return items_.at(idx);
-    }
-    size_t GatherersCount() const {
-        return gatherers_.size();
-    }
-    Gatherer GetGatherer(size_t idx) const {
-        return gatherers_.at(idx);
-    }
+    size_t ItemsCount() const { return items_.size(); }
+    Item GetItem(size_t idx) const { return items_.at(idx); }
+    size_t GatherersCount() const { return gatherers_.size(); }
+    Gatherer GetGatherer(size_t idx) const { return gatherers_.at(idx); }
 
 private:
     const std::vector<Gatherer>& gatherers_;
     const std::vector<Item>& items_;
 };
 
-// Эту функцию вам нужно будет реализовать в соответствующем задании.
-// При проверке ваших тестов она не нужна - функция будет линковаться снаружи.
 std::vector<GatheringEvent> FindGatherEvents(const ItemGathererProvider& provider);
 
 }  // namespace collision_detector

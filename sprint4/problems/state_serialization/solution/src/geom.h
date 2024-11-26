@@ -10,6 +10,9 @@ struct Vec2D {
         : x(x)
         , y(y) {
     }
+    Vec2D(int x, int y) = delete;
+    Vec2D(int x, double y) = delete;
+    Vec2D(double x, int y) = delete;
 
     Vec2D& operator*=(double scale) {
         x *= scale;
@@ -37,6 +40,9 @@ struct Point2D {
         : x(x)
         , y(y) {
     }
+    Point2D(int x, int y) = delete;
+    Point2D(int x, double y) = delete;
+    Point2D(double x, int y) = delete;
 
     Point2D& operator+=(const Vec2D& rhs) {
         x += rhs.x;

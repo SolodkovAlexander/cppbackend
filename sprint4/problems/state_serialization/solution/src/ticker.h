@@ -48,7 +48,7 @@ private:
             last_tick_ = this_tick;
             try {
                 handler_(delta);
-            } catch (...) {
+            } catch (const std::exception&) {
             }
             ScheduleTick();
         }

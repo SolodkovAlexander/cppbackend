@@ -19,9 +19,8 @@ find_package(Boost REQUIRED COMPONENTS url)
 # Добавляем библиотеки
 add_library(ModelLib STATIC 
 	src/model.h
-	src/model.cpp
-	src/tagged.h
-	src/geom.h
+    src/model.cpp
+    src/tagged.h
 )
 add_library(LootGeneratorLib STATIC 
 	src/loot_generator.h
@@ -62,11 +61,12 @@ add_executable(game_server
 	src/request_handler.cpp
 	src/request_handler.h
 	src/ticker.h
+	src/players.h
+	src/players.cpp
 	src/application.h
 	src/application.cpp
-	src/app_state_saver.h
-	src/players.h
-	src/app_state_saver.h
+	src/server_state_saver.h
+	src/server_state_saver.cpp
 )
 target_include_directories(game_server PRIVATE CONAN_PKG::boost)
 target_link_libraries(game_server CONAN_PKG::boost 

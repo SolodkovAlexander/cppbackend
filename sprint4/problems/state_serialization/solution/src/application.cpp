@@ -39,8 +39,7 @@ json::value Application::JoinGame(const std::string& user_name, const std::strin
     
     auto session = game_.FindSession(map);
     if (!session) {
-        session = game_.CreateSession(map,
-                                      extra_data_.map_id_to_loot_types.at(*(map->GetId())).size());
+        session = game_.CreateSession(map, GetMapLostObjectTypeCount(*(map->GetId())));
     }
     auto dog = session->CreateDog(user_name, randomize_spawn_points_);
     auto player_info = players_.Add(dog, session);
@@ -106,7 +105,7 @@ void Application::ActionPlayer(const Players::Token& player_token, const std::st
     }        
 
     if (!direction) {
-        player->SetSpeed(Dog::DogSpeed{});
+        player->SetSpeed({0.0, 0.0});
     } else {
         player->ChangeDirection(*direction);
     }
@@ -120,9 +119,6 @@ void Application::Tick(std::chrono::milliseconds delta) {
     if (delta < 0ms) {
         throw AppErrorException("Whrong time"s, AppErrorException::Category::InvalidTime);
     }
-
-    // Уведомляем подписчиков сигнала tick
-    tick_signal_(delta);
 
     // Получаем игроков
     const auto& players = players_.GetPlayers();
@@ -163,8 +159,8 @@ void Application::Tick(std::chrono::milliseconds delta) {
         gatherers.reserve(players.size());
         for (auto player : players) {
             auto player_next_state = player_next_states.emplace_back(players_.CalcPlayerNextState(player, delta));
-            gatherers.emplace_back(collision_detector::Gatherer{player->GetPosition(),
-                                                                player_next_state.position,
+            gatherers.emplace_back(collision_detector::Gatherer{{player->GetPosition().x, player->GetPosition().y},
+                                                                {player_next_state.position.x, player_next_state.position.y},
                                                                 player_width});
         }
 
@@ -172,7 +168,7 @@ void Application::Tick(std::chrono::milliseconds delta) {
         auto events = collision_detector::FindGatherEvents(collision_detector::Provider(gatherers, items));
 
         // Определяем информацию о луте на карте (для определения очков)
-        auto map_loot_types = extra_data_.map_id_to_loot_types.at(*session->GetMap()->GetId());
+        auto map_loot_types = extra_data_.map_id_to_loot_types.at(*(session->GetMap()->GetId()));
 
         // Разбираем события получения предметов/посещения базы
         std::unordered_set<size_t> lost_objects_taken;
@@ -214,13 +210,16 @@ void Application::Tick(std::chrono::milliseconds delta) {
         for (size_t i = 0; i < players.size(); ++i) {
             players.at(i)->SetPosition(player_next_states.at(i).position);
             if (player_next_states.at(i).stopped) {
-                players.at(i)->SetSpeed({0,0});
-            }            
+                players.at(i)->SetSpeed({});
+            }
         }
     }
     
     // Генерируем новый лут
     GenerateMapsLostObjects(delta);
+
+    // Уведомляем подписчиков сигнала tick
+    tick_signal_(delta);
 }
 
 size_t Application::GetMapLostObjectTypeCount(const std::string& map_id) const {
@@ -231,18 +230,19 @@ size_t Application::GetMapLostObjectTypeCount(const std::string& map_id) const {
     return extra_data_.map_id_to_loot_types.at(*(map->GetId())).size();
 }
 
-void Application::GenerateMapsLostObjects(std::chrono::milliseconds delta) {
-    for (const auto& map : game_.GetMaps()) {
-        auto session = game_.FindSession(&map);
-        if (!session) {
-            continue;
-        }
-
-        unsigned new_lost_object_count = loot_generator_.Generate(delta, 
-                                                                  session->GetLostObjects().size(),
-                                                                  session->GetDogs().size());
-        session->GenerateLostObjects(new_lost_object_count);
+void Application::GenerateMapsLostObjects(std::chrono::milliseconds delta)
+{
+  for (const auto &map : game_.GetMaps()) {
+    auto session = game_.FindSession(&map);
+    if (!session) {
+        continue;
     }
+
+    unsigned new_lost_object_count = loot_generator_.Generate(delta,
+                                                              session->GetLostObjects().size(),
+                                                              session->GetDogs().size());
+    session->GenerateLostObjects(new_lost_object_count);
+  }
 }
 
 } // namespace game_scenarios

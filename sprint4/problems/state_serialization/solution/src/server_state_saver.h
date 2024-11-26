@@ -80,9 +80,7 @@ public:
             throw std::invalid_argument("Invalid position for restore dog"s);
         }
 
-        auto dog = session->CreateDog(id_, name_);
-        dog->SetPosition(pos_);
-        dog->SetSpeed(speed_);
+        auto dog = session->CreateDog(id_, name_, pos_, speed_);
         dog->SetDirection(direction_);
         for (const auto& bag_item : bag_items_) {
             if (bag_item.type > session->GetLostObjectTypeCount()) {
@@ -108,9 +106,9 @@ public:
 private:
     model::Dog::DogId id_ = model::Dog::DogId{0u};
     std::string name_;
-    model::Dog::DogPosition pos_;
+    model::Dog::Position pos_{};
     size_t bag_capacity_ = 0;
-    model::Dog::DogSpeed speed_;
+    model::Dog::Speed speed_{};
     model::Direction direction_ = model::Direction::NORTH;
     std::vector<model::Dog::BagItem> bag_items_;
 };
@@ -120,14 +118,13 @@ class PlayerRepr {
 public:
     PlayerRepr() = default;
 
-    explicit PlayerRepr(players::Player *player, const players::Players::Token& token)
+    explicit PlayerRepr(players::Player* player, const players::Players::Token& token)
         : score_(player->GetScore())
         , token_(token) {
     }
 
-    void Restore(model::Dog *dog, model::GameSession *session, players::Players& players) const {
-        auto player_info = players.Add(dog, session, token_);
-        player_info.player->AddScore(score_);
+    void Restore(model::Dog* dog, model::GameSession* session, players::Players& players_engine) const {
+        players_engine.Add(dog, session, token_, score_);
     }
 
     template <typename Archive>
@@ -137,7 +134,7 @@ public:
     }
 
 private:
-    players::Player::PlayerScore score_{0};
+    players::Player::Score score_{0};
     players::Players::Token token_;
 };
 
@@ -158,13 +155,16 @@ public:
         }
 
         // Получаем представления игроков
-        for (const auto& [token, player] : app.GetPlayers().GetPlayerInfos()) {
+        for (const auto& [token, player] : app.GetPlayersEngine().GetPlayerInfos()) {
+            if (player->GetSession() != session) {
+                continue;
+            }
             players_[player->GetId()] = PlayerRepr(player, token);
         }
     }
 
     void Restore(game_scenarios::Application& app) const {
-        auto map = app.GetGame().FindMap(model::Map::Id{map_id_});
+        auto map = app.GetGameEngine().FindMap(model::Map::Id{map_id_});
         if (!map) {
             throw std::invalid_argument("No map for restore game session");
         }
@@ -173,7 +173,7 @@ public:
         }
 
         // Создаем игровую сессию
-        auto session = app.GetGame().CreateSession(map, lost_object_type_count_);
+        auto session = app.GetGameEngine().CreateSession(map, lost_object_type_count_);
 
         // Создаем потерянные объекты
         for (const auto& lost_object : lost_objects_) {
@@ -190,9 +190,9 @@ public:
         assert(dogs_.size() == players_.size());
         for (size_t i = 0; i < dogs_.size(); ++i) {
             // Создаем собаку
-            auto dog = dogs_.at(i).Restore(session);            
+            auto dog = dogs_.at(i).Restore(session);
             // Создаем игрока
-            players_.at(dog->GetId()).Restore(dog, session, app.GetPlayers());
+            players_.at(dog->GetId()).Restore(dog, session, app.GetPlayersEngine());
         }
     }
 
@@ -215,27 +215,46 @@ private:
 
 }  // namespace serialization
 
-namespace app_state_saver {
+namespace server_state_saver {
 
-class AppStateSaver {
+class ServerStateSaver {
 public:
-    AppStateSaver(game_scenarios::Application& app, const std::string& state_file, int save_state_period)
+    explicit ServerStateSaver(game_scenarios::Application& app, const std::string& state_file, int save_state_period)
         : app_(app)
         , state_file_(state_file) {
         if (save_state_period > 0) {
             save_state_period_ = std::chrono::milliseconds(save_state_period);
         }
+        if (!state_file.empty()) {
+            state_file_tmp_ = state_file + "_tmp.state"s;
+        }
     }
 
 public:
+    /** Сохраняет состояние с течением времени. */
+    void SaveState(std::chrono::milliseconds delta) {
+        if (state_file_.empty()
+            || !save_state_period_) {
+            return;
+        }
+
+        if (delta + time_before_save > save_state_period_) {
+            SaveState();
+            time_before_save = 0ms;
+        }
+    }
+
+    /** Сохраняет состояние сервера. */
     void SaveState() {
+        // Если не указан файл сохранения состояния: выход
         if (state_file_.empty()) {
             return;
         }
 
-        std::ofstream file(state_file_ + "_tmp"s, std::ios::out | std::ios::trunc);
+        // Сохраняем состояние в временный файл
+        std::ofstream file(state_file_tmp_, std::ios::out | std::ios::trunc);
         if (!file.is_open()) {
-            throw std::invalid_argument("Failed to open state file for save state");
+            throw std::invalid_argument("Failed to open tmp state file for save state");
         }
 
         std::stringstream file_stream;
@@ -244,29 +263,17 @@ public:
         file << file_stream.str();
         file.close();
 
-        std::filesystem::rename(state_file_ + "_tmp"s,
+        // Переименовываем файл из временного в основной файл
+        std::filesystem::rename(state_file_tmp_,
                                 state_file_);
     }
 
-    void SaveState(std::chrono::milliseconds delta) {
-        if (!save_state_period_ 
-            || state_file_.empty()) {
-            return;
-        }
-
-        previos_total_ = total_;
-        total_ += delta;
-
-        if (total_ - previos_total_ > save_state_period_) {
-            SaveState();
-        }
-    }
-
+    /** Восстнавливает состояние сервера. */
     void RestoreState() {
         if (state_file_.empty()
             || !std::filesystem::exists(state_file_)) {
             return;
-        }        
+        }
 
         std::ifstream file(state_file_);
         if (!file.is_open()) {
@@ -280,7 +287,7 @@ public:
 
 private:
     void SaveState(std::stringstream& file_stream) {
-        const auto& sessions = app_.GetGame().GetSessions();
+        const auto& sessions = app_.GetGameEngine().GetSessions();
 
         boost::archive::text_oarchive oa{file_stream};
         std::vector<serialization::GameSessionRepr> session_reprs;
@@ -303,11 +310,11 @@ private:
 private:
     game_scenarios::Application& app_;
     std::string state_file_;
-    std::optional<std::chrono::milliseconds> save_state_period_;
+    std::string state_file_tmp_;
+    std::optional<std::chrono::milliseconds> save_state_period_{std::nullopt};
 
 private:
-    std::chrono::milliseconds total_{0ms};
-    std::chrono::milliseconds previos_total_{0ms};
+    std::chrono::milliseconds time_before_save{0ms};
 };
 
-}  //namespace app_state_saver
+}  //namespace server_state_saver

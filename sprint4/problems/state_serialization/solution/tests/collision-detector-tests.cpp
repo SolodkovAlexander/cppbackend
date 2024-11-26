@@ -116,15 +116,15 @@ SCENARIO("Check no events") {
         WHEN("one gatherer and item after finish pos below the line") {
             THEN("no events") { REQUIRE(events.empty()); }
         }
-        events = FindGatherEvents(ItemGathererProviderTest{gatherers, {{{-2, -2.0}, 0.5}}});
+        events = FindGatherEvents(ItemGathererProviderTest{gatherers, {{{-2.0, -2.0}, 0.5}}});
         WHEN("one gatherer and item before start pos below the line") {
             THEN("no events") { REQUIRE(events.empty()); }
         }
-        events = FindGatherEvents(ItemGathererProviderTest{gatherers, {{{-2, 2.0}, 0.5}}});
+        events = FindGatherEvents(ItemGathererProviderTest{gatherers, {{{-2.0, 2.0}, 0.5}}});
         WHEN("one gatherer and item before start pos above the line") {
             THEN("no events") { REQUIRE(events.empty()); }
         }
-        events = FindGatherEvents(ItemGathererProviderTest{gatherers, {{{2, 2.0}, 0.5}}});
+        events = FindGatherEvents(ItemGathererProviderTest{gatherers, {{{2.0, 2.0}, 0.5}}});
         WHEN("one gatherer and item after finish pos above the line") {
             THEN("no events") { REQUIRE(events.empty()); }
         }

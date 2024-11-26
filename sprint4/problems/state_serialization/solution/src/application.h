@@ -1,7 +1,7 @@
 #pragma once
 
-#include <boost/signals2.hpp>
 #include <boost/json.hpp>
+#include <boost/signals2.hpp>
 #include <string>
 #include <unordered_map>
 
@@ -74,27 +74,25 @@ public:
     Application& operator=(const Application&) = delete;
 
 public:
+    Game& GetGameEngine() noexcept { return game_; }
+    Players& GetPlayersEngine() noexcept { return players_; }
     json::value GetMapsShortInfo() const noexcept;
     json::value GetMapInfo(const std::string& map_id) const;
     json::value GetPlayers(const Players::Token& player_token);
-    json::value JoinGame(const std::string& user_name, const std::string& map_id);    
+    json::value JoinGame(const std::string& user_name, const std::string& map_id);
     json::value GetGameState(const Players::Token& player_token);
     void ActionPlayer(const Players::Token& player_token, const std::string& direction_str);
 
 public:
-    using TickSignal = sig::signal<void(std::chrono::milliseconds delta)>;
     bool GetAutoTick() const noexcept;
     void Tick(std::chrono::milliseconds delta);
-    
+
     // Добавляем обработчик сигнала tick и возвращаем объект connection для управления,
     // при помощи которого можно отписаться от сигнала
-    [[nodiscard]] sig::connection DoOnTick(const TickSignal::slot_type& handler) {
-        return tick_signal_.connect(handler);
-    }
+    using TickSignal = sig::signal<void(std::chrono::milliseconds delta)>;
+    [[nodiscard]] sig::connection DoOnTick(const TickSignal::slot_type& handler) { return tick_signal_.connect(handler); }
 
 public:
-    Game& GetGame() noexcept { return game_; }
-    Players& GetPlayers() noexcept { return players_; }
     size_t GetMapLostObjectTypeCount(const std::string& map_id) const;
 
 private:
@@ -107,8 +105,6 @@ private:
     bool randomize_spawn_points_;
     bool auto_tick_enabled_;
     loot_gen::LootGenerator loot_generator_;
-    
-private:
     TickSignal tick_signal_;
 };
 
