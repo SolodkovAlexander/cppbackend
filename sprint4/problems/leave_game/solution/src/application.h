@@ -2,10 +2,12 @@
 
 #include <boost/json.hpp>
 #include <boost/signals2.hpp>
+#include <chrono>
 #include <string>
 #include <unordered_map>
 
 #include "collision_detector.h"
+#include "database_controller.h"
 #include "json_parser.h"
 #include "loot_generator.h"
 #include "model.h"
@@ -60,14 +62,22 @@ struct LootInfo {
     std::unordered_map<std::string, std::unordered_map<size_t, size_t>> map_to_loot_type_score;
 };
 
+struct AppConfig {
+    bool randomize_spawn_points = false; 
+    bool auto_tick_enabled = false;
+    std::string db_url;
+};
+
 class Application {
 public:
-    Application(Game&& game, ExtraData&& extra_data, bool randomize_spawn_points = false, bool auto_tick_enabled = false) 
+    Application(Game&& game, ExtraData&& extra_data, const AppConfig& config = {}) 
         : game_(std::move(game))
         , extra_data_(std::move(extra_data))
-        , randomize_spawn_points_(randomize_spawn_points)
-        , auto_tick_enabled_(auto_tick_enabled)
-        , loot_generator_(loot_gen::LootGenerator(extra_data.base_interval, extra_data.probability)) {
+        , randomize_spawn_points_(config.randomize_spawn_points)
+        , auto_tick_enabled_(config.auto_tick_enabled)
+        , loot_generator_(loot_gen::LootGenerator(extra_data.base_interval, extra_data.probability))
+        , db_{config.db_url} {
+        db_.Prepare();
     }
 
     Application(const Application&) = delete;
@@ -105,6 +115,7 @@ private:
     bool randomize_spawn_points_;
     bool auto_tick_enabled_;
     loot_gen::LootGenerator loot_generator_;
+    database_control::Database db_;
     TickSignal tick_signal_;
 };
 

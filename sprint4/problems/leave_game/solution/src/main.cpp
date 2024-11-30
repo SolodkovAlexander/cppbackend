@@ -37,6 +37,18 @@ void RunWorkers(unsigned n, const Fn& fn) {
     fn();
 }
 
+constexpr const char DB_URL_ENV_NAME[]{"GAME_DB_URL"};
+
+std::string GetAppConfigDbUrlFromEnv() {
+    std::string db_url;    
+    if (const auto* url = std::getenv(DB_URL_ENV_NAME)) {
+        db_url = url;
+    } else {
+        throw std::runtime_error(DB_URL_ENV_NAME + " environment variable not found"s);
+    }
+    return db_url;
+}
+
 }  // namespace
 
 struct Args {
@@ -101,8 +113,11 @@ int main(int argc, const char* argv[]) {
             auto [game, extra_data] = json_parser::LoadGame<game_scenarios::ExtraData>(config_file);
             game_scenarios::Application app(std::move(game),
                                             std::move(extra_data),
-                                            args->randomize_spawn_points,
-                                            args->tick_period >= 0);
+                                            game_scenarios::AppConfig{
+                                                args->randomize_spawn_points,
+                                                args->tick_period >= 0,
+                                                GetAppConfigDbUrlFromEnv()
+                                            });
 
             // 1.1. Создаем помощник по сохранению состояния сервера
             server_state_saver::ServerStateSaver server_state_saver(app,
