@@ -676,7 +676,7 @@ private:
                     result = MakeStringResponse<Body, Allocator>(http::status::bad_request, 
                                                                 json::serialize(json::object{
                                                                     {"code"sv, "invalidArgument"sv}, 
-                                                                    {"message"sv, "Invalid maxItems"sv}
+                                                                    {"message"sv, "Invalid url args"sv}
                                                                 }), 
                                                                 req);
                     break;
