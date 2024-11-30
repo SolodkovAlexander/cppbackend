@@ -42,7 +42,8 @@ public:
         work.commit();
     }
 
-    void AddPlayerScore(const PlayerScore& player_score) {
+    template <typename PlayerScoreClass>
+    void AddPlayerScore(const PlayerScoreClass& player_score) {
         pqxx::work work{connection_};
         work.exec_params(
             R"(INSERT INTO retired_players (id, name, score, play_time_ms) VALUES ($1, $2, $3, $4);)"_zv,

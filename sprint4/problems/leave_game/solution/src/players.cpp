@@ -5,6 +5,30 @@
 namespace players {
 using namespace model;
 
+void Player::SetSpeed(const Dog::Speed& speed, std::chrono::milliseconds duration_time) { 
+    // Если игрок двигался
+    if (dog_->GetSpeed() != Dog::Speed{}) {
+        // Игрок двигался: следовательно жил на протяжении времени duration_time
+        //live_duration_ms_ += duration_time;
+
+        // Если игрок только остановился: начинаем отсчет времени стоянки
+        if (speed == Dog::Speed{}) {
+            stop_duration_ms_ = 0ms;
+        }
+    } else {
+        // Если игрок уже стоял
+        // Если игрок начал двигаться: сбрасываем счетчик времени стоянки
+        if (speed != Dog::Speed{}) {
+            stop_duration_ms_ = std::nullopt;
+        } else {
+            // Если игрок продолжил стоять: добавляем время стоянки
+            stop_duration_ms_ = *stop_duration_ms_ + duration_time;
+        }
+    }
+
+    dog_->SetSpeed(speed);
+}
+
 void Player::ChangeDirection(Direction direction) {
     DimensionD speed_value(session_->GetMap()->GetDefaultSpeed());
     Dog::Speed speed{};
@@ -16,14 +40,13 @@ void Player::ChangeDirection(Direction direction) {
         case Direction::EAST: speed = {speed_value, 0.0}; break;
     }
     dog_->SetDirection(direction);
-    dog_->SetSpeed(speed);
+
+    SetSpeed(speed);
 }
 
-void Player::SetState(Player::State state) {
+void Player::SetState(Player::State state, std::chrono::milliseconds duration_time) {
     dog_->SetPosition(state.position);
-    if (state.stopped) {
-        dog_->SetSpeed({});
-    }
+    SetSpeed({}, duration_time);
 }
 
 Player::State Player::GetNextState(std::chrono::milliseconds time_delta) {
@@ -128,6 +151,40 @@ Player* Players::FindByToken(const Token& token) {
         return nullptr;
     }
     return player_by_token_[token];
+}
+
+std::vector<Players::RetiredPlayerInfo> Players::CheckAndRemoveRetiredPlayers(std::chrono::milliseconds duration_time,
+                                                                              std::chrono::milliseconds player_retirement_time_ms) {
+    std::vector<RetiredPlayerInfo> retired_players;
+    auto player_it = players_.begin();
+    while (player_it != players_.end()) {
+        // Если игрок стоит на месте больше времени, чем может выдержать его здоровье: игрок умирает
+        if ((*player_it)->GetSpeed() == Dog::Speed{} 
+            && (*player_it)->GetStopDuration() + duration_time >= player_retirement_time_ms) {
+            // Получаем информацию об игроке
+            retired_players.emplace_back(Players::RetiredPlayerInfo{(*player_it)->GetName(), 
+                                                                    (*player_it)->GetScore(),
+                                                                    (*player_it)->GetLiveDuration() + player_retirement_time_ms});
+            // Убиваем собаку
+            (*player_it)->GetSession()->RemoveDog((*player_it)->GetDog());
+
+            // Забываем токен
+            Token player_token;
+            for (const auto& [token, other_player] : player_by_token_) {
+                if (other_player == (*player_it).get()) {
+                    player_token = token;
+                    break;
+                }
+            }
+            player_by_token_.erase(player_token);
+
+            // Убиваем игрока
+            player_it = players_.erase(player_it);
+        } else {
+            ++player_it;
+        }
+    }
+    return retired_players;
 }
 
 Players::Token Players::GeneratePlayerToken() {

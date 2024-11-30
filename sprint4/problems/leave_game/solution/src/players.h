@@ -12,6 +12,7 @@
 
 namespace players {
 using namespace model;
+using namespace std::literals;
 
 class Player {
 public:
@@ -30,7 +31,9 @@ public:
      {}
 
 public:
+    const std::string& GetName() const noexcept { return dog_->GetName(); }
     Dog::DogId GetId() const { return dog_->GetId(); }
+    Dog* GetDog() const noexcept { return dog_; }
     GameSession* GetSession() const noexcept { return session_; }
     std::vector<Dog::BagItem> GetBagItems() const noexcept { return dog_->GetBagItems(); }
 
@@ -43,11 +46,22 @@ public:
     size_t ClearBag() { return dog_->ClearBag(); }
     bool AddItemInBag(size_t item_id, size_t item_type) { return dog_->AddItemInBag(Dog::BagItem{item_id, item_type}); }
     
-    void SetSpeed(const Dog::Speed& speed) { dog_->SetSpeed(speed); }
+    Dog::Speed GetSpeed() const noexcept { return dog_->GetSpeed(); }
+    void SetSpeed(const Dog::Speed& speed, std::chrono::milliseconds duration_time = 0ms);
+
+    std::chrono::milliseconds GetStopDuration() const noexcept {
+        if (!stop_duration_ms_) {
+            return 0ms;
+        }
+        return *stop_duration_ms_;
+    }
+    std::chrono::milliseconds GetLiveDuration() const noexcept {
+        return live_duration_ms_;
+    }
 
     void ChangeDirection(Direction direction);
 
-    void SetState(Player::State state);    
+    void SetState(Player::State state, std::chrono::milliseconds duration_time = 0ms);    
     Player::State GetNextState(std::chrono::milliseconds time_delta);
 
 private:
@@ -57,6 +71,8 @@ private:
     Dog* dog_;
     GameSession* session_;
     Score score_{0};
+    std::chrono::milliseconds live_duration_ms_{0ms};
+    std::optional<std::chrono::milliseconds> stop_duration_ms_{0ms};
 };
 
 class Players {
@@ -86,6 +102,17 @@ public:
     const PlayerByToken& GetPlayerInfos() const noexcept { return player_by_token_; }
 
     Player::State CalcPlayerNextState(Player* player, std::chrono::milliseconds time_delta) { return player->GetNextState(time_delta); }
+
+private:
+struct RetiredPlayerInfo {
+    std::string name;
+    size_t score = 0;
+    std::chrono::milliseconds play_time_ms = 0ms;
+};
+
+public:
+    std::vector<RetiredPlayerInfo> CheckAndRemoveRetiredPlayers(std::chrono::milliseconds duration_time,
+                                                                std::chrono::milliseconds player_retirement_time_ms);
 
 private:
     Token GeneratePlayerToken();

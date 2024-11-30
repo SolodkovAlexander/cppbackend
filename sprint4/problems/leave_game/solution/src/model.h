@@ -256,7 +256,7 @@ public:
     Dog* CreateDog(const std::string& name, bool randomize_spawn_point = false);
     Dog* CreateDog(Dog::DogId id, const std::string& name, const Dog::Position& pos, const Dog::Speed& speed);
     std::vector<Dog*> GetDogs() const;
-
+    void RemoveDog(Dog* dog);
 
     size_t GetLostObjectTypeCount() const noexcept { return lost_object_type_count_; }
     const std::vector<LostObject>& GetLostObjects() const noexcept { return lost_objects_; }

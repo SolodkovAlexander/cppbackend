@@ -132,7 +132,7 @@ void Application::ActionPlayer(const Players::Token& player_token, const std::st
     }        
 
     if (!direction) {
-        player->SetSpeed({0.0, 0.0});
+        player->SetSpeed({});
     } else {
         player->ChangeDirection(*direction);
     }
@@ -146,6 +146,10 @@ void Application::Tick(std::chrono::milliseconds delta) {
     if (delta < 0ms) {
         throw AppErrorException("Whrong time"s, AppErrorException::Category::InvalidTime);
     }
+
+    // Проверяем, удаляем старых игроков (которые стоят на месте больше положенного времени)
+    // чтобы не тратить на них время
+    RememberRetiredPlayers(players_.CheckAndRemoveRetiredPlayers(delta, extra_data_.player_retirement_time_ms));
 
     // Получаем игроков
     const auto& players = players_.GetPlayers();
@@ -235,12 +239,12 @@ void Application::Tick(std::chrono::milliseconds delta) {
 
         // Перемещаем и возможно останавливаем игроков
         for (size_t i = 0; i < players.size(); ++i) {
-            players.at(i)->SetPosition(player_next_states.at(i).position);
-            if (player_next_states.at(i).stopped) {
-                players.at(i)->SetSpeed({});
-            }
+            players.at(i)->SetState(player_next_states.at(i), delta);
         }
     }
+    
+    // Проверяем и удаляем старых игроков (которые стоят на месте больше положенного времени)
+    RememberRetiredPlayers(players_.CheckAndRemoveRetiredPlayers(delta, extra_data_.player_retirement_time_ms));
     
     // Генерируем новый лут
     GenerateMapsLostObjects(delta);

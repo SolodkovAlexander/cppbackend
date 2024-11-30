@@ -60,6 +60,12 @@ std::vector<Dog*> GameSession::GetDogs() const {
     return dogs;
 }
 
+void GameSession::RemoveDog(Dog* dog) {
+    dog_id_to_dog_.erase(dog->GetId());
+    auto dog_it = std::find_if(dogs_.begin(), dogs_.end(), [dog](const std::unique_ptr<Dog>& item){ return item.get() == dog; });
+    dogs_.erase(dog_it);
+}
+
 void GameSession::GenerateLostObjects(unsigned lost_object_count) {
     if (lost_object_type_count_ == 0) {
         return;

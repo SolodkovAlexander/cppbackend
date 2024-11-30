@@ -112,6 +112,13 @@ public:
 private:
     void GenerateMapsLostObjects(std::chrono::milliseconds delta);
 
+    template <typename PlayerInfo>
+    void RememberRetiredPlayers(const std::vector<PlayerInfo>& player_infos) {
+        for (const auto& player_info : player_infos) {
+            db_.AddPlayerScore(player_info);
+        }
+    }
+
 private:
     Game game_;
     ExtraData extra_data_;

@@ -22,8 +22,8 @@ struct Vec2D {
 
     auto operator<=>(const Vec2D&) const = default;
 
-    double x = 0;
-    double y = 0;
+    double x = 0.0;
+    double y = 0.0;
 };
 
 inline Vec2D operator*(Vec2D lhs, double rhs) {
@@ -52,8 +52,8 @@ struct Point2D {
 
     auto operator<=>(const Point2D&) const = default;
 
-    double x = 0;
-    double y = 0;
+    double x = 0.0;
+    double y = 0.0;
 };
 
 inline Point2D operator+(Point2D lhs, const Vec2D& rhs) {
