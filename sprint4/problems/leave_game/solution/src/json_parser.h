@@ -22,7 +22,7 @@ model::Map MapFromJson(const json::value& value, Game& game, ExtraData &extra_da
     const auto& obj = value.as_object();
     std::string map_id = obj.at("id"s).as_string().data();
     auto map = Map{
-        Map::Id(map_id), 
+        Map::Id(map_id),  
         obj.at("name"s).as_string().data(),
         obj.count("dogSpeed"s) ? obj.at("dogSpeed"s).as_double() : game.GetMapDefaultSpeed(),
         obj.count("bagCapacity"s) ? obj.at("bagCapacity"s).as_int64() : game.GetMapDefaultBagCapacity()
@@ -63,6 +63,9 @@ std::tuple<model::Game, ExtraData> LoadGame(const std::filesystem::path& json_pa
     double base_interval = loot_generator_config.at("period"sv).as_double();
     extra_data.base_interval = duration_cast<milliseconds>(duration_cast<seconds>(duration<double>(base_interval)));
     extra_data.probability = loot_generator_config.at("probability"sv).as_double();
+    if (game_data.contains("dogRetirementTime"sv)) {
+        extra_data.player_retirement_time_ms = duration_cast<milliseconds>(duration_cast<seconds>(duration<double>(game_data.at("dogRetirementTime"sv).as_double())));
+    }
 
     Game game(game_data.contains("defaultDogSpeed"sv) 
               ? game_data.at("defaultDogSpeed"sv).as_double() 

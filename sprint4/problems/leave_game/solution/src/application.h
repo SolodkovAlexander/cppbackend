@@ -60,6 +60,7 @@ struct LootInfo {
     double probability{0.0};
     std::unordered_map<std::string, json::array> map_id_to_loot_types;
     std::unordered_map<std::string, std::unordered_map<size_t, size_t>> map_to_loot_type_score;
+    std::chrono::milliseconds player_retirement_time_ms{60s};
 };
 
 struct AppConfig {
