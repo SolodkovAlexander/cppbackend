@@ -30,7 +30,9 @@ public:
         NoPlayerWithToken,
         InvalidMapId,
         InvalidDirection,
-        InvalidTime
+        InvalidTime,
+        InvalidStart,
+        InvalidMaxItems
     }; 
 
 public: 
@@ -92,6 +94,7 @@ public:
     json::value GetPlayers(const Players::Token& player_token);
     json::value JoinGame(const std::string& user_name, const std::string& map_id);
     json::value GetGameState(const Players::Token& player_token);
+    json::value GetRecords(std::optional<int> start, std::optional<int> max_items);
     void ActionPlayer(const Players::Token& player_token, const std::string& direction_str);
 
 public:

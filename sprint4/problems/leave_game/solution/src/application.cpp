@@ -89,6 +89,33 @@ json::value Application::GetGameState(const Players::Token& player_token) {
                         {"lostObjects"sv, lost_objects_by_id}};
 }
 
+json::value Application::GetRecords(std::optional<int> start, std::optional<int> max_items) {
+    if (!start) {
+        start = 0;
+    }
+    if (!max_items) {
+        max_items = 100;
+    }
+    if (*start < 0) {
+        throw AppErrorException("Invalid start"s, AppErrorException::Category::InvalidStart);
+    }
+    if (*max_items < 0 || *max_items > 100) {
+        throw AppErrorException("Invalid max items"s, AppErrorException::Category::InvalidMaxItems);
+    }
+
+    auto players_score = db_.GetPlayersScore(*start, *max_items);
+    json::array players_score_json;
+    for (const auto& player_score : players_score) {
+        players_score_json.emplace_back(json::object{
+            {"name"sv, player_score.name},
+            {"score"sv, player_score.score},
+            {"playTime"sv, std::chrono::duration_cast<std::chrono::seconds>(player_score.play_time_ms).count()}
+        });
+    }
+
+    return players_score_json;
+}
+
 void Application::ActionPlayer(const Players::Token& player_token, const std::string& direction_str) {
     std::optional<Direction> direction;
     if (!direction_str.empty()) {

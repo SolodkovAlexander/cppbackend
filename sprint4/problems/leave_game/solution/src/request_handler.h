@@ -95,7 +95,8 @@ enum class ApiRequestType {
     Players,
     GameState,
     Action,
-    Tick  
+    Tick,
+    Records
 };
 
 class RequestHandler : public std::enable_shared_from_this<RequestHandler> {
@@ -170,6 +171,9 @@ private:
         }
         if (url_decoded == "/api/v1/maps"sv) {
             return HandleMapsRequest(req);
+        }
+        if (url_decoded.starts_with("/api/v1/game/records")) {
+            return HandleRecordsRequest(req);
         }
 
         // /api/v1/maps/{map_id}
@@ -292,6 +296,34 @@ private:
             return MakeErrorResponse(ResponseErrorType::BadRequest, req, ApiRequestType::Maps);
         }
         return MakeStringResponse(http::status::ok, json::serialize(app_.GetMapsShortInfo()), req);
+    }
+
+    template <typename Body, typename Allocator>
+    StringResponse HandleRecordsRequest(http::request<Body, http::basic_fields<Allocator>>& req) {
+        if (req.method() != http::verb::get && req.method() != http::verb::head) {
+            return MakeErrorResponse(ResponseErrorType::InvalidMethod, req, ApiRequestType::Records);
+        }
+        
+        std::optional<int> start, max_items;
+        try {
+            urls::decode_view url_decoded(req.target());
+            std::string url_decoded_str(url_decoded.begin(), url_decoded.end());
+            urls::params_view url_params(urls::url_view(url_decoded_str).params());
+            if (url_params.contains("start"sv)) {
+                start = std::stoi((*url_params.find("start"sv)).value);
+            }
+            if (url_params.contains("maxItems"sv)) {
+                max_items = std::stoi((*url_params.find("maxItems"sv)).value);
+            }
+        } catch (const std::exception& e) { }
+
+        json::value records;
+        try {
+            records = app_.GetRecords(start, max_items);
+        } catch (const AppErrorException& e) { 
+            return MakeErrorResponse(e.GetCategory(), req, ApiRequestType::Records);
+        }
+        return MakeStringResponse(http::status::ok, json::serialize(records), req);
     }
 
     template <typename Body, typename Allocator>
@@ -628,6 +660,30 @@ private:
             }
             break;
         }
+        case ApiRequestType::Records: {
+            switch (error_type) {
+                case ResponseErrorType::InvalidMethod: {
+                    result = MakeStringResponse<Body, Allocator>(http::status::method_not_allowed, 
+                                                                json::serialize(json::object{
+                                                                    {"code"sv, "invalidMethod"sv}, 
+                                                                    {"message"sv, "Invalid method"sv}
+                                                                }), 
+                                                                req);
+                    (*result).set(http::field::allow, "GET, HEAD"sv);
+                    break;
+                }
+                case ResponseErrorType::BadRequest: {
+                    result = MakeStringResponse<Body, Allocator>(http::status::bad_request, 
+                                                                json::serialize(json::object{
+                                                                    {"code"sv, "invalidArgument"sv}, 
+                                                                    {"message"sv, "Invalid maxItems"sv}
+                                                                }), 
+                                                                req);
+                    break;
+                }
+            }
+            break;
+        }
         case ApiRequestType::Map: {
             switch (error_type) {
                 case ResponseErrorType::BadRequest: {
@@ -711,7 +767,9 @@ private:
             {ErrCategory::InvalidMapId, ResponseErrorType::InvalidMapId},
             {ErrCategory::NoPlayerWithToken, ResponseErrorType::NoPlayerWithToken},
             {ErrCategory::InvalidDirection, ResponseErrorType::InvalidJSON},
-            {ErrCategory::InvalidTime, ResponseErrorType::InvalidJSON}
+            {ErrCategory::InvalidTime, ResponseErrorType::InvalidJSON},
+            {ErrCategory::InvalidStart, ResponseErrorType::BadRequest},
+            {ErrCategory::InvalidMaxItems, ResponseErrorType::BadRequest}
         };
         return MakeErrorResponse(err_category_to_err_type.at(error_category), req, request_type);
     }
