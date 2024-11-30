@@ -3,6 +3,7 @@
 #include <memory>
 #include <optional>
 #include <random>
+#include <set>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -262,7 +263,11 @@ public:
     const std::vector<LostObject>& GetLostObjects() const noexcept { return lost_objects_; }
     void SetLostObjects(const std::vector<LostObject>& lost_objects) { lost_objects_ = lost_objects; }
     void GenerateLostObjects(unsigned lost_object_count);
-    void RemoveLostObject(size_t lost_object_index) { lost_objects_.erase(lost_objects_.begin() + lost_object_index); }
+    void RemoveLostObjects(const std::set<size_t>& lost_object_indeces) {
+        for (auto index_it = lost_object_indeces.rbegin(); index_it != lost_object_indeces.rend(); ++index_it) {
+            lost_objects_.erase(lost_objects_.begin() + *index_it); 
+        }
+    }
 
     const Map* GetMap() const noexcept { return map_; }
 

@@ -5,30 +5,6 @@
 namespace players {
 using namespace model;
 
-void Player::SetSpeed(const Dog::Speed& speed, std::chrono::milliseconds duration_time) { 
-    // Если игрок двигался
-    if (dog_->GetSpeed() != Dog::Speed{}) {
-        // Игрок двигался: следовательно жил на протяжении времени duration_time
-        //live_duration_ms_ += duration_time;
-
-        // Если игрок только остановился: начинаем отсчет времени стоянки
-        if (speed == Dog::Speed{}) {
-            stop_duration_ms_ = 0ms;
-        }
-    } else {
-        // Если игрок уже стоял
-        // Если игрок начал двигаться: сбрасываем счетчик времени стоянки
-        if (speed != Dog::Speed{}) {
-            stop_duration_ms_ = std::nullopt;
-        } else {
-            // Если игрок продолжил стоять: добавляем время стоянки
-            stop_duration_ms_ = *stop_duration_ms_ + duration_time;
-        }
-    }
-
-    dog_->SetSpeed(speed);
-}
-
 void Player::ChangeDirection(Direction direction) {
     DimensionD speed_value(session_->GetMap()->GetDefaultSpeed());
     Dog::Speed speed{};
@@ -46,7 +22,9 @@ void Player::ChangeDirection(Direction direction) {
 
 void Player::SetState(Player::State state, std::chrono::milliseconds duration_time) {
     dog_->SetPosition(state.position);
-    SetSpeed({}, duration_time);
+    if (state.stopped) {
+        SetSpeed({});
+    }
 }
 
 Player::State Player::GetNextState(std::chrono::milliseconds time_delta) {

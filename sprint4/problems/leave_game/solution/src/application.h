@@ -32,7 +32,8 @@ public:
         InvalidDirection,
         InvalidTime,
         InvalidStart,
-        InvalidMaxItems
+        InvalidMaxItems,
+        Undefined
     }; 
 
 public: 

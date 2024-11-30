@@ -1,3 +1,5 @@
+#include <set>
+
 #include "application.h"
 
 namespace game_scenarios {
@@ -177,8 +179,7 @@ void Application::Tick(std::chrono::milliseconds delta) {
                                                          static_cast<double>(office.GetPosition().y)}, 
                                                          base_width});
         }
-        auto lost_objects = session->GetLostObjects();
-        for (const auto& lost_object : lost_objects) {
+        for (const auto& lost_object : session->GetLostObjects()) {
             items.emplace_back(collision_detector::Item{{lost_object.position.x, lost_object.position.y}, 
                                                          item_width});
         }
@@ -199,10 +200,10 @@ void Application::Tick(std::chrono::milliseconds delta) {
         auto events = collision_detector::FindGatherEvents(collision_detector::Provider(gatherers, items));
 
         // Определяем информацию о луте на карте (для определения очков)
-        auto map_loot_types = extra_data_.map_id_to_loot_types.at(*(session->GetMap()->GetId()));
+        const auto& map_loot_types = extra_data_.map_id_to_loot_types.at(*(session->GetMap()->GetId()));
 
         // Разбираем события получения предметов/посещения базы
-        std::unordered_set<size_t> lost_objects_taken;
+        std::set<size_t> lost_objects_taken;
         for (const auto& event : events) {
             auto player = players.at(event.gatherer_id);
 
@@ -227,24 +228,25 @@ void Application::Tick(std::chrono::milliseconds delta) {
             }
 
             // Если предмет смогли упаковать в рюкзак
-            if (player->AddItemInBag(lost_object_index, lost_objects.at(lost_object_index).type)) {
+            if (player->AddItemInBag(lost_object_index, session->GetLostObjects().at(lost_object_index).type)) {
                 lost_objects_taken.insert(lost_object_index);
             }
         }
 
         // Удаляем полученные игроками предметы из списка потерянных
-        for (size_t lost_object_index : lost_objects_taken) {
-            session->RemoveLostObject(lost_object_index);
-        }
+        session->RemoveLostObjects(lost_objects_taken);
 
         // Перемещаем и возможно останавливаем игроков
         for (size_t i = 0; i < players.size(); ++i) {
+                players.at(i)->AddLiveOrStopDuration(delta);
             players.at(i)->SetState(player_next_states.at(i), delta);
         }
     }
     
     // Проверяем и удаляем старых игроков (которые стоят на месте больше положенного времени)
-    RememberRetiredPlayers(players_.CheckAndRemoveRetiredPlayers(delta, extra_data_.player_retirement_time_ms));
+    try {
+        RememberRetiredPlayers(players_.CheckAndRemoveRetiredPlayers(0ms, extra_data_.player_retirement_time_ms));
+    } catch (const std::exception& e) { }
     
     // Генерируем новый лут
     GenerateMapsLostObjects(delta);

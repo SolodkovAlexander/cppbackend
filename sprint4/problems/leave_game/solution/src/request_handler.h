@@ -240,15 +240,15 @@ private:
 
     template <typename Body, typename Allocator>
     StringResponse HandleActionRequest(http::request<Body, http::basic_fields<Allocator>>& req) {
-        if (req.method() != http::verb::post) {
-            return MakeErrorResponse(ResponseErrorType::InvalidMethod, req, ApiRequestType::Action);
-        }
-        if (boost::algorithm::to_lower_copy(std::string(req[http::field::content_type])) != ContentType::APPLICATION_JSON) {
-            return MakeErrorResponse(ResponseErrorType::InvalidContentType, req, ApiRequestType::Action);
-        }
-        
-        return ExecuteAuthorized(req, [&req, this](const players::Players::Token& token) {
-            std::string direction_str;
+            if (req.method() != http::verb::post) {
+                return MakeErrorResponse(ResponseErrorType::InvalidMethod, req, ApiRequestType::Action);
+            }
+            if (boost::algorithm::to_lower_copy(std::string(req[http::field::content_type])) != ContentType::APPLICATION_JSON) {
+                return MakeErrorResponse(ResponseErrorType::InvalidContentType, req, ApiRequestType::Action);
+            }
+
+            return ExecuteAuthorized(req, [&req, this](const players::Players::Token& token) {
+                std::string direction_str;
             try {
                 auto req_data = json::parse(req.body()).as_object();
                 direction_str = req_data.at("move"sv).as_string().c_str();
@@ -261,20 +261,20 @@ private:
             } catch (const AppErrorException& e) { 
                 return MakeErrorResponse(e.GetCategory(), req, ApiRequestType::Action);
             }
-            return MakeStringResponse(http::status::ok, json::serialize(json::object{}), req);
-        }, ApiRequestType::Action);
+                return MakeStringResponse(http::status::ok, json::serialize(json::object{}), req);
+            }, ApiRequestType::Action);
     }
 
     template <typename Body, typename Allocator>
-    StringResponse HandleTickRequest(http::request<Body, http::basic_fields<Allocator>>& req) {
-        if (req.method() != http::verb::post) {
-            return MakeErrorResponse(ResponseErrorType::InvalidMethod, req, ApiRequestType::Tick);
-        }
-        if (app_.GetAutoTick()) {
-            return MakeErrorResponse(ResponseErrorType::BadRequest, req, ApiRequestType::Tick);
-        }
-        
-        std::chrono::milliseconds time_delta{0ms};
+    StringResponse HandleTickRequest(http::request<Body, http::basic_fields<Allocator>>& req) {        
+            if (req.method() != http::verb::post) {
+                return MakeErrorResponse(ResponseErrorType::InvalidMethod, req, ApiRequestType::Tick);
+            }
+            if (app_.GetAutoTick()) {
+                return MakeErrorResponse(ResponseErrorType::BadRequest, req, ApiRequestType::Tick);
+            }
+
+            std::chrono::milliseconds time_delta{0ms};
         try {
             auto req_data = json::parse(req.body()).as_object();
             time_delta = std::chrono::milliseconds(req_data.at("timeDelta"sv).as_int64());
@@ -446,7 +446,8 @@ private:
     template <typename Body, typename Allocator>
     static StringResponse MakeErrorResponse(ResponseErrorType error_type,
                                             http::request<Body, http::basic_fields<Allocator>>& req,
-                                            ApiRequestType request_type = ApiRequestType::Any) {
+                                            ApiRequestType request_type = ApiRequestType::Any,
+                                            const std::string& message = ""s) {
         std::optional<StringResponse> result;
 
         switch (request_type) {
@@ -729,7 +730,7 @@ private:
                 result = MakeStringResponse<Body, Allocator>(http::status::bad_request, 
                                                              json::serialize(json::object({
                                                                 {"code", "badRequest"s},
-                                                                {"message", "Bad request"s}
+                                                                {"message", (!message.empty() ? message : "Bad request"s)}
                                                              })), 
                                                              req,
                                                              ContentType::APPLICATION_JSON,
@@ -759,7 +760,8 @@ private:
     template <typename Body, typename Allocator>
     static StringResponse MakeErrorResponse(AppErrorException::Category error_category,
                                             http::request<Body, http::basic_fields<Allocator>>& req,
-                                            ApiRequestType request_type) {
+                                            ApiRequestType request_type,
+                                            const std::string& message = ""s) {
         using ErrCategory = AppErrorException::Category;
         using ErrCategoryInfo = std::unordered_map<AppErrorException::Category, ResponseErrorType>;
         static const ErrCategoryInfo err_category_to_err_type{
@@ -769,9 +771,10 @@ private:
             {ErrCategory::InvalidDirection, ResponseErrorType::InvalidJSON},
             {ErrCategory::InvalidTime, ResponseErrorType::InvalidJSON},
             {ErrCategory::InvalidStart, ResponseErrorType::BadRequest},
-            {ErrCategory::InvalidMaxItems, ResponseErrorType::BadRequest}
+            {ErrCategory::InvalidMaxItems, ResponseErrorType::BadRequest},
+            {ErrCategory::Undefined, ResponseErrorType::BadRequest}            
         };
-        return MakeErrorResponse(err_category_to_err_type.at(error_category), req, request_type);
+        return MakeErrorResponse(err_category_to_err_type.at(error_category), req, request_type, message);
     }
 
     template <typename Send>

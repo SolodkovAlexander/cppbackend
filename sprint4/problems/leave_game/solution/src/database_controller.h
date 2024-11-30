@@ -23,11 +23,12 @@ class Database {
 
 public:
     explicit Database(std::string db_url)
-        : connection_{db_url} {
+        : db_url_{db_url} {
     }
 
 public:
     void Prepare() {
+        pqxx::connection connection_{db_url_};
         pqxx::work work{connection_};
         work.exec(R"(
             CREATE TABLE IF NOT EXISTS retired_players (
@@ -44,6 +45,7 @@ public:
 
     template <typename PlayerScoreClass>
     void AddPlayerScore(const PlayerScoreClass& player_score) {
+        pqxx::connection connection_{db_url_};
         pqxx::work work{connection_};
         work.exec_params(
             R"(INSERT INTO retired_players (id, name, score, play_time_ms) VALUES ($1, $2, $3, $4);)"_zv,
@@ -52,6 +54,7 @@ public:
     }
 
     std::vector<PlayerScore> GetPlayersScore(int offset, int limit) {
+        pqxx::connection connection_{db_url_};
         pqxx::read_transaction r{connection_};
 
         auto query_text = "SELECT name, score, play_time_ms FROM retired_players \
@@ -71,7 +74,7 @@ private:
     }
 
 private:
-    pqxx::connection connection_;
+    std::string db_url_;
 };
 
 }  //namespace database_control

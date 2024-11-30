@@ -47,16 +47,22 @@ public:
     bool AddItemInBag(size_t item_id, size_t item_type) { return dog_->AddItemInBag(Dog::BagItem{item_id, item_type}); }
     
     Dog::Speed GetSpeed() const noexcept { return dog_->GetSpeed(); }
-    void SetSpeed(const Dog::Speed& speed, std::chrono::milliseconds duration_time = 0ms);
-
-    std::chrono::milliseconds GetStopDuration() const noexcept {
-        if (!stop_duration_ms_) {
-            return 0ms;
+    void SetSpeed(const Dog::Speed& speed) { 
+        if (GetSpeed() == Dog::Speed{} && speed != Dog::Speed{}) {
+            live_duration_ms_ += stop_duration_ms_;
+            stop_duration_ms_ = 0ms;
         }
-        return *stop_duration_ms_;
+        dog_->SetSpeed(speed);
     }
-    std::chrono::milliseconds GetLiveDuration() const noexcept {
-        return live_duration_ms_;
+
+    std::chrono::milliseconds GetStopDuration() const noexcept { return stop_duration_ms_; }
+    std::chrono::milliseconds GetLiveDuration() const noexcept { return live_duration_ms_; }
+    void AddLiveOrStopDuration(std::chrono::milliseconds duration_time) {
+        if (GetSpeed() == Dog::Speed{}) {
+            stop_duration_ms_ += duration_time;
+        } else {
+            live_duration_ms_ += duration_time;
+        }
     }
 
     void ChangeDirection(Direction direction);
@@ -72,7 +78,7 @@ private:
     GameSession* session_;
     Score score_{0};
     std::chrono::milliseconds live_duration_ms_{0ms};
-    std::optional<std::chrono::milliseconds> stop_duration_ms_{0ms};
+    std::chrono::milliseconds stop_duration_ms_{0ms};
 };
 
 class Players {

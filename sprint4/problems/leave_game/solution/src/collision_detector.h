@@ -66,8 +66,8 @@ public:
     Gatherer GetGatherer(size_t idx) const { return gatherers_.at(idx); }
 
 private:
-    const std::vector<Gatherer>& gatherers_;
-    const std::vector<Item>& items_;
+    std::vector<Gatherer> gatherers_;
+    std::vector<Item> items_;
 };
 
 std::vector<GatheringEvent> FindGatherEvents(const ItemGathererProvider& provider);
